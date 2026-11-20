@@ -156,9 +156,12 @@ class Manager:
                 if want is not None and r["path"] not in want:
                     continue
                 ok = {"ready"} if want is None else {"ready", "failed", "skipped"} | ({"completed"} if force else set())
-                if self.stopping and r["status"] == "processing":
-                    self.deferred[r["path"]] = bool(force)
-                    n += 1
+                if self.stopping and r["path"] in self.ctls:
+                    # The DB row may already say Ready while its previous worker
+                    # is still deleting temporary files. Do not overlap attempts.
+                    previous = self.deferred.get(r["path"])
+                    self.deferred[r["path"]] = bool(force or previous)
+                    n += 1 if previous is None else 0
                     continue
                 if r["status"] not in ok:
                     continue
