@@ -324,13 +324,21 @@ def db(sql, args=()):
             for col in ("started_at", "finished_at", "elapsed", "video_seconds"):
                 if col not in have:
                     _conn.execute(f"ALTER TABLE projects ADD COLUMN {col} REAL")
-            # crash/restart recovery: unfinished jobs go back to the queue
-            _conn.execute("UPDATE projects SET status='pending', progress=0, started_at=NULL WHERE status='processing'")
-            _conn.commit()
         cur = _conn.execute(sql, args)
         rows = [dict(r) for r in cur.fetchall()] if cur.description else []
         _conn.commit()
         return rows
+
+
+def recover_processing_jobs():
+    """Requeue interrupted jobs. Call only after the application owns its instance lock."""
+    now = time.time()
+    return db(
+        "UPDATE projects SET status='pending', progress=0, message='', "
+        "started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? "
+        "WHERE status='processing'",
+        (now,),
+    )
 
 
 def kv_get(k, default=None):
