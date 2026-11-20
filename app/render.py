@@ -538,6 +538,10 @@ def render(P, S, work, out_part, ctl, logfile, rng=None, on_progress=None):
     inputs, graph, T = build(P, S, work, rng, logfile)
     (work / "graph.txt").write_text(";\n".join(graph), encoding="utf-8")
     hw = hw_plan(S)
+    if hw and hw[0]:
+        core.log("info", P["proj"]["name"], "", f"Video encoding: {hw[0]} (GPU); image scaling, transitions and filters remain CPU-based")
+    else:
+        core.log("info", P["proj"]["name"], "", "Video encoding: libx264 (CPU)")
     if S.video.hwaccel == "gpu" and hw == [None]:
         core.log("warn", P["proj"]["name"], "", "GPU encoding was requested but no working GPU encoder was found - using CPU")
     # FFmpeg otherwise starts a large filter/encoder thread pool for every
