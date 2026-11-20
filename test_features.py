@@ -1,5 +1,5 @@
 """Unit + render tests for: dust, start words, free caption placement, highlight timing, models, hardware plan,
-timing estimates, preset export/import, optional voice/music, DB migration.  Run: python tests/test_features.py"""
+timing estimates, preset export/import, optional voice/music, DB migration.  Run: python test_features.py"""
 import json, os, random, re, shutil, sqlite3, subprocess, sys, tempfile, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, ".."))
