@@ -553,8 +553,63 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self): self._dispatch("POST")
 
 
+_instance_lock_handle = None
+
+
+def _acquire_instance_lock():
+    """Hold an OS-level lock for this data directory so another process cannot recover live jobs."""
+    global _instance_lock_handle
+    lock_path = core.DATA / "studio.instance.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+b")
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()).encode("ascii"))
+        handle.flush()
+        _instance_lock_handle = handle
+    except (OSError, ImportError):
+        handle.close()
+        raise SystemExit(
+            "BulkVideoStudio is already running with this data folder. "
+            "Close the other instance before starting another."
+        )
+
+
+def _release_instance_lock():
+    global _instance_lock_handle
+    handle, _instance_lock_handle = _instance_lock_handle, None
+    if handle is None:
+        return
+    try:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+    finally:
+        handle.close()
+
+
 def serve(port=8765, open_browser=True):
-    core.db("SELECT 1")  # init DB + restart recovery
+    _acquire_instance_lock()
+    core.db("SELECT 1")  # initialise the database only after obtaining the instance lock
+    core.recover_processing_jobs()  # only this exclusive instance may recover interrupted jobs
     worker.manager.start()
     srv = None
     for p in range(port, port + 20):
@@ -581,3 +636,4 @@ def serve(port=8765, open_browser=True):
         worker.manager.shutdown()
         time.sleep(1)
         srv.server_close()
+        _release_instance_lock()
