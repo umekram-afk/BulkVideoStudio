@@ -369,20 +369,58 @@ class Manager:
                 removed = 0
                 if delete_videos:
                     settings = core.load_settings()
-                    extra = settings["paths"]["extra_output"]
-                    for row in core.db(
-                        "SELECT path,output FROM projects WHERE output IS NOT NULL AND output!=''"
-                    ):
-                        output = Path(row["output"])
-                        candidates = [output]
-                        if extra:
-                            candidates.append(Path(extra) / output.name)
-                        for candidate in candidates:
-                            if (candidate.suffix.lower() == ".mp4" and candidate.is_file()
-                                and (candidate.parent == Path(row["path"]) or
-                                     (extra and candidate.parent == Path(extra)))):
-                                candidate.unlink(missing_ok=True)
+                    extra = Path(settings["paths"]["extra_output"]).expanduser() if settings["paths"]["extra_output"] else None
+                    suffix = re.sub(r"[^\\w.\\-]", "_", settings["output"]["suffix"])
+                    rows = core.db("SELECT path,name,output FROM projects")
+                    candidates = set()
+
+                    # Use the output naming convention as well as the database
+                    # pointer. Older completed records often have no output
+                    # field, so relying on that field silently leaves videos.
+                    project_dirs = {}
+                    for row in rows:
+                        project_dir = Path(row["path"]).expanduser()
+                        project_name = row.get("name") or project_dir.name
+                        project_dirs[project_dir] = project_name
+                        for ending in {suffix, "_final"}:
+                            candidates.add(project_dir / f"{project_name}{ending}.mp4")
+                            if extra:
+                                candidates.add(extra / f"{project_name}{ending}.mp4")
+                        if row.get("output"):
+                            recorded = Path(row["output"]).expanduser()
+                            # Only delete a recorded output when it is in the
+                            # project folder or the configured extra-output folder.
+                            if recorded.parent == project_dir or (extra and recorded.parent == extra):
+                                candidates.add(recorded)
+                            if extra:
+                                candidates.add(extra / recorded.name)
+
+                    # Include project folders on disk even if a prior reset,
+                    # database migration, or old scan left no project row.
+                    parent = Path(settings["paths"]["parent"]).expanduser() if settings["paths"]["parent"] else None
+                    prefix = settings["paths"]["prefix"]
+                    if parent and parent.is_dir():
+                        for project_dir in parent.iterdir():
+                            if project_dir.is_dir() and project_dir.name.startswith(prefix):
+                                for ending in {suffix, "_final"}:
+                                    candidates.add(project_dir / f"{project_dir.name}{ending}.mp4")
+                                    if extra:
+                                        candidates.add(extra / f"{project_dir.name}{ending}.mp4")
+
+                    failures = []
+                    for candidate in sorted(candidates, key=lambda p: str(p).casefold()):
+                        try:
+                            if candidate.suffix.lower() == ".mp4" and candidate.is_file():
+                                candidate.unlink()
                                 removed += 1
+                        except OSError as exc:
+                            failures.append(f"{candidate}: {exc}")
+                    if failures:
+                        raise StudioError(
+                            "render_failure",
+                            f"Could not delete {len(failures)} generated video file(s). Close any player or editor using them and try Reset again.",
+                            "\\n".join(failures[:20])
+                        )
 
                 core.db("DELETE FROM projects")
                 core.db("DELETE FROM logs")
