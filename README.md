@@ -189,9 +189,9 @@ standard library, so the single third-party dependency is `faster-whisper`.
 
 ## 9. Running the tests (optional, needs FFmpeg)\nThe test scripts and `fixtures.py` are stored in the repository root (not in a `tests` subfolder).
 ```
-python tests\test_plan.py      # alignment / timeline logic
-python tests\test_effects.py   # zoom + black noise (unit + real renders)
-python tests\test_features.py  # dust, start words, placement, timing, presets, models, optional voice/music
-python tests\test_voicesync.py # voice-based image matching + voice-synchronised captions
-python tests\test_app.py       # full server + batch + restart recovery over HTTP
+python test_plan.py      # alignment / timeline logic
+python test_effects.py   # zoom + black noise (unit + real renders)
+python test_features.py  # dust, start words, placement, timing, presets, models, optional voice/music
+python test_voicesync.py # voice-based image matching + voice-synchronised captions
+python test_app.py       # full server + batch + restart recovery over HTTP
 ```
