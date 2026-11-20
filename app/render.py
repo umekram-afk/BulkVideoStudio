@@ -197,6 +197,14 @@ def _tail(logfile, n=1500):
 
 
 # ---------------------------------------------------------------- building blocks
+def _ass_filter(filename):
+    """Expose Windows system fonts to libass so selected font families resolve consistently."""
+    if os.name == "nt":
+        fonts = (Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts").as_posix().replace(":", r"\:")
+        return f"ass={filename}:fontsdir='{fonts}'"
+    return f"ass={filename}"
+
+
 def _fit_filter(S, W, H):
     fit = S.video.fit
     if fit == "crop":
@@ -273,10 +281,10 @@ def black_noise_chain(cfg, W, H, fps):
     return ",".join(ch), rate
 
 
-def zoom_filter(S, rng, clip_len, fps):
+def zoom_filter(S, rng, clip_len, fps, force=False):
     """Per-image smooth zoom (sub-pixel, via the perspective filter). Returns '' or a filter string ending in ','."""
     z = S.effects.zoom
-    if not z.enabled or rng.random() * 100 >= z.probability:
+    if not z.enabled or (not force and rng.random() * 100 >= z.probability):
         return ""
     lo, hi = sorted((z.amount_min, z.amount_max))
     amt = rng.uniform(lo, hi) / 100
@@ -424,7 +432,7 @@ def build(P, S, work, rng, logfile):
             inputs += ["-loop", "1", "-framerate", str(fps), "-t", f"{ln:.3f}", "-i", str(work / f"img_{k}.png")]
         else:
             inputs += ["-f", "lavfi", "-t", f"{ln:.3f}", "-i", f"color=c=black:s={W}x{H}:r={fps}"]
-        zf = zoom_filter(S, rng, ln, fps) if k < n else ""
+        zf = zoom_filter(S, rng, ln, fps, force=(k == 0 and S.effects.zoom.first_image)) if k < n else ""
         g.append(f"[{k}:v]format=yuv420p,{zf}fps={fps},setsar=1,settb=AVTB[c{k}]")
     cur = "c0"
     for j in range(clips - 1):
@@ -470,18 +478,18 @@ def build(P, S, work, rng, logfile):
         need_filters("ass")
         drng = random.Random(rng.random() if dust.random_per_video else 1234)
         (work / "dust.ass").write_text(dustgen.make_dust_ass(dust, W, H, T, drng), encoding="utf-8")
-        g.append(f"[{cur}]ass=dust.ass[dust]")
+        g.append(f"[{cur}]{_ass_filter('dust.ass')}[dust]")
         cur = "dust"
     if S.captions.enabled and P.get("words"):
         need_filters("ass")
         (work / "captions.ass").write_text(captions.make_ass(P["words"], S, W, H, Tv, progressive=P.get("voice_captions", False),
                                                               image_starts=[s["start"] for s in P["segments"]]), encoding="utf-8")
-        g.append(f"[{cur}]ass=captions.ass[cap]")
+        g.append(f"[{cur}]{_ass_filter('captions.ass')}[cap]")
         cur = "cap"
     if S.start.enabled and P.get("start_text"):
         need_filters("ass")
         (work / "start.ass").write_text(captions.make_start_ass(P["start_text"], S, W, H, Tv), encoding="utf-8")
-        g.append(f"[{cur}]ass=start.ass[start]")
+        g.append(f"[{cur}]{_ass_filter('start.ass')}[start]")
         cur = "start"
     g.append(f"[{cur}]format=yuv420p[vout]")
 
