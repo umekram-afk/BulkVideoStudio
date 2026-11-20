@@ -19,7 +19,8 @@ let lastTiming = null;
 function timingText() {
   const t = lastTiming; if (!t || t.started == null) return "No batch has run yet. Timing and estimates appear here once you start rendering.";
   const parts = [`Total time${t.active ? " so far" : ""}: <b>${fmtDur(t.elapsed)}</b>`];
-  if (t.finished) parts.push(`Render time of ${t.finished} finished video(s): <b>${fmtDur(t.render_sum)}</b>`, `Average per video: <b>${fmtDur(t.avg)}</b>`);
+  if (t.rendered) parts.push(`Combined render time of ${t.rendered} finished job(s): <b>${fmtDur(t.render_sum)}</b>`);
+  if (t.finished) parts.push(`Average successful video: <b>${fmtDur(t.avg)}</b>`);
   if (t.active) parts.push(t.eta != null ? `Estimated time remaining: <b>~${fmtDur(t.eta)}</b> (finish about ${new Date(Date.now() + t.eta * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : "Estimated time remaining: <span class='mute'>estimating after the first video…</span>");
   return parts.join(" · ");
 }
