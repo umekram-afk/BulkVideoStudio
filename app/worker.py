@@ -91,7 +91,6 @@ class Manager:
     def start(self):
         with self.lock:
             self.stop_evt.clear()
-            self.stopping = False
             alive = {t.name for t in self.threads if t.is_alive()}
             for i in range(MAX_THREADS):
                 name = f"worker-{i}"
@@ -146,7 +145,7 @@ class Manager:
 
     def enqueue(self, paths=None, force=False):
         with self.lock:
-            if self.resetting:
+            if self.resetting or self.stopping:
                 return 0
             now, n = time.time(), 0
             idle = core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0
@@ -186,7 +185,7 @@ class Manager:
         with self.lock:
             now = time.time()
             self.paused = False
-            self.stopping = True
+            self.stopping = bool(self.ctls)
             core.kv_set("paused", False)
             core.kv_set("batch_end", now)
             core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
