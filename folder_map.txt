@@ -1,0 +1,83 @@
+9. The caption animation has only one option, there should be couple of them. When someone select the highlight spoken word enabled that mean they want still text and only the highlighted colors will be moving to next word.
+10. Check mark the first image has to have mandatory zoom 
+11. The app become significantly slower compare to the last version. 
+
+i rearranged the files to different folders to fix the error, if it is not already there, please put the files into right folder:
+
+Directory of C:\fb_Reel\BulkVideoStudio\studio
+
+11/18/2026  06:41 PM    <DIR>          .
+11/18/2026  06:41 PM    <DIR>          ..
+11/16/2026  09:56 AM                34 .gitignore
+11/16/2026  04:29 PM    <DIR>          .venv
+11/18/2026  05:07 PM    <DIR>          app
+11/18/2026  06:34 PM    <DIR>          data
+11/16/2026  04:29 AM             1,563 fixtures.py
+11/18/2026  06:43 PM                 0 folder_map.txt
+11/18/2026  04:53 PM    <DIR>          image
+11/16/2026  09:39 AM               390 main.py
+11/18/2026  09:05 PM            14,983 README.md
+11/16/2026  09:56 AM               136 requirements.txt
+11/16/2026  09:56 AM               828 run.bat
+11/16/2026  09:56 AM             2,941 setup.bat
+11/18/2026  05:18 PM    <DIR>          static
+11/18/2026  12:58 AM            20,152 test_app.py
+11/17/2026  02:29 AM             6,770 test_effects.py
+11/18/2026  10:51 AM            16,942 test_features.py
+11/16/2026  09:56 AM             3,229 test_plan.py
+11/18/2026  09:05 PM             1,245 TEST_RESULTS.md
+11/18/2026  10:50 AM            14,083 test_voicesync.py
+11/18/2026  09:03 PM            20,546 ui_smoke.js
+              15 File(s)        103,842 bytes
+
+Directory of C:\fb_Reel\BulkVideoStudio\studio\.venv
+Directory of C:\fb_Reel\BulkVideoStudio\studio\app
+
+11/18/2026  05:07 PM    <DIR>          .
+11/18/2026  05:07 PM    <DIR>          ..
+11/18/2026  05:57 AM            11,626 captions.py
+11/18/2026  05:57 AM            23,213 core.py
+11/17/2026  07:55 AM             6,682 dust.py
+11/17/2026  07:55 AM             2,638 models.py
+11/18/2026  06:00 AM            13,355 plan.py
+11/18/2026  05:58 AM            27,740 render.py
+11/17/2026  07:56 AM             7,834 scan.py
+11/18/2026  05:58 AM            22,177 server.py
+11/18/2026  06:00 AM            13,029 voicesync.py
+11/17/2026  06:12 PM            15,126 worker.py
+11/16/2026  09:39 AM                 0 __init__.py
+11/18/2026  05:08 PM    <DIR>          __pycache__
+              11 File(s)        143,420 bytes
+
+Directory of C:\fb_Reel\BulkVideoStudio\studio\app\__pycache__
+
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data
+
+11/18/2026  06:34 PM    <DIR>          .
+11/18/2026  06:34 PM    <DIR>          ..
+11/18/2026  06:34 PM    <DIR>          cache
+11/18/2026  06:34 PM    <DIR>          logs
+11/18/2026  06:24 PM    <DIR>          previews
+11/18/2026  06:18 PM             4,623 settings.json
+11/18/2026  06:34 PM           106,496 studio.db
+11/18/2026  06:34 PM            32,768 studio.db-shm
+11/18/2026  06:36 PM           350,232 studio.db-wal
+11/18/2026  06:37 PM    <DIR>          thumbs
+11/18/2026  06:36 PM    <DIR>          tmp
+11/18/2026  06:34 PM    <DIR>          transcripts
+               4 File(s)        494,119 bytes
+
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data\cache
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data\logs
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data\previews
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data\thumbs
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data\tmp
+Directory of C:\fb_Reel\BulkVideoStudio\studio\data\transcripts
+Directory of C:\fb_Reel\BulkVideoStudio\studio\image
+Directory of C:\fb_Reel\BulkVideoStudio\studio\static
+11/18/2026  05:18 PM    <DIR>          .
+11/18/2026  05:18 PM    <DIR>          ..
+11/18/2026  09:03 PM             8,931 app.css
+11/18/2026  09:05 PM            95,463 app.js
+11/17/2026  01:06 PM               597 index.html
+

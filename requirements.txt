@@ -1,0 +1,2 @@
+# Only one third-party package is needed. The web server, database and job queue use the Python standard library.
+faster-whisper>=1.0.0

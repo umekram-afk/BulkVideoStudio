@@ -1,0 +1,207 @@
+{
+  "paths": {
+    "parent": "E:\\Drive D\\_FB youtube reel process\\__Muse all pic for project\\sets-001-100",
+    "prefix": "set-",
+    "script_dir": "C:\\fb_Reel\\BulkVideoStudio\\All Files\\Source Music",
+    "voice_dir": "",
+    "music_dir": "C:\\fb_Reel\\BulkVideoStudio\\All Files\\Source Music",
+    "extra_output": ""
+  },
+  "sources": {
+    "script_source": "transcribe",
+    "voice_mode": "folder"
+  },
+  "voice": {
+    "enabled": true,
+    "required": true,
+    "volume": 100,
+    "fade_in": 0.0,
+    "fade_out": 0.3,
+    "normalize": true
+  },
+  "music": {
+    "enabled": true,
+    "required": true,
+    "volume": 42,
+    "random_start": true,
+    "min_start": 0.0,
+    "max_start": 120.0,
+    "manual_start": 0.0,
+    "fade_in": 1.0,
+    "fade_out": 2.0,
+    "ducking": false,
+    "duck_amount": 8,
+    "allow_repeat": false
+  },
+  "video": {
+    "aspect": "9:16",
+    "fps": 30,
+    "crf": 20,
+    "preset": "veryfast",
+    "fit": "blur",
+    "bg_color": "#000000",
+    "hwaccel": "auto",
+    "hw_encoder": "auto",
+    "image_seconds": 3.0
+  },
+  "sync": {
+    "method": "voice",
+    "match_threshold": 50,
+    "min_hold": 1.0,
+    "lead_ms": 150,
+    "unmatched": "keep",
+    "mode": "sentence",
+    "group_size": 2,
+    "mismatch_threshold": 60,
+    "mismatch_action": "estimate"
+  },
+  "whisper": {
+    "model": "base",
+    "language": "auto",
+    "vad": false
+  },
+  "effects": {
+    "vignette": {
+      "enabled": true,
+      "intensity": 99,
+      "range": 60,
+      "feather": 72
+    },
+    "black_noise": {
+      "enabled": false,
+      "intensity": 25,
+      "opacity": 25,
+      "speed": "normal",
+      "size": 2,
+      "softness": 0,
+      "flicker": 0
+    },
+    "dust": {
+      "enabled": true,
+      "amount": 100,
+      "size": 100,
+      "min_opacity": 40,
+      "max_opacity": 90,
+      "opacity": 100,
+      "color": "#000000",
+      "softness": 40,
+      "fps": 24,
+      "jitter": 100,
+      "hairs_enabled": true,
+      "hairs_chance": 76,
+      "hairs_max": 3,
+      "hairs_size": 100,
+      "hairs_color": "#000000",
+      "grain_enabled": true,
+      "grain_amount": 100,
+      "grain_opacity": 38,
+      "scratches_enabled": true,
+      "scratches_chance": 25,
+      "scratches_opacity": 50,
+      "scratches_width": 100,
+      "scratches_color": "#000000",
+      "random_per_video": true
+    },
+    "white_noise": {
+      "enabled": false,
+      "intensity": 90,
+      "opacity": 44,
+      "speed": "fast"
+    },
+    "wobble": {
+      "enabled": false,
+      "intensity": 40,
+      "range": 30,
+      "speed": "slow"
+    },
+    "zoom": {
+      "enabled": true,
+      "probability": 95,
+      "direction": "random",
+      "amount_min": 3,
+      "amount_max": 15,
+      "speed": 8,
+      "smoothness": 100,
+      "focus": "random",
+      "quality": "high",
+      "focus_x": 50,
+      "focus_y": 50
+    }
+  },
+  "start": {
+    "enabled": true,
+    "file": "start.txt",
+    "pick": "random_line",
+    "max_words": 3,
+    "default_text": "Love",
+    "duration_ms": 500,
+    "delay_ms": 0,
+    "fade_in_ms": 0,
+    "fade_out_ms": 100,
+    "font": "Charmline Script Personal Use",
+    "size": 209,
+    "color": "#ffffff",
+    "bold": true,
+    "italic": false,
+    "uppercase": false,
+    "spacing": 19,
+    "outline": 3,
+    "outline_color": "#837777",
+    "shadow": 5,
+    "bg_enabled": false,
+    "bg_color": "#000000",
+    "bg_opacity": 60,
+    "padding": 16,
+    "rotation": 0,
+    "pos_x": 21,
+    "pos_y": 15
+  },
+  "transition": {
+    "enabled": true,
+    "name": "fade",
+    "duration": 0.5,
+    "timing": "center",
+    "random": false,
+    "random_scope": "per_image"
+  },
+  "ending": {
+    "enabled": true,
+    "duration": 2.0,
+    "fade_video": true,
+    "fade_audio": true
+  },
+  "captions": {
+    "enabled": true,
+    "preset": "custom",
+    "font": "Arial",
+    "size": 78,
+    "color": "#ffffff",
+    "bold": false,
+    "bg_enabled": false,
+    "bg_color": "#000000",
+    "bg_opacity": 70,
+    "padding": 12,
+    "pos_x": 50,
+    "pos_y": 12,
+    "voice_sync": true,
+    "max_words": 3,
+    "max_lines": 2,
+    "align": "center",
+    "outline": 7,
+    "outline_color": "#1f0f0f",
+    "shadow": 6,
+    "uppercase": false,
+    "highlight": false,
+    "highlight_color": "#ffe600",
+    "timing_offset": 0.0,
+    "highlight_lead": 0
+  },
+  "output": {
+    "suffix": "_final",
+    "overwrite": true,
+    "skip_existing": true
+  },
+  "batch": {
+    "workers": 1
+  }
+}
