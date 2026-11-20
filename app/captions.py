@@ -13,15 +13,20 @@ def _cache_file(audio, S, model):
     return core.DATA / "transcripts" / (hashlib.sha1(key.encode()).hexdigest() + ".json")
 
 
-def transcribe(audio, S):
+def transcribe(audio, S, ctl=None):
     """Return {'words': [{'word','start','end'}], 'language', 'duration', 'model'}; cached on disk.
     Uses the chosen model only if it is downloaded; otherwise the base model (see models.effective)."""
     global _model, _mkey
     model = models.effective(S.whisper.model)
     cf = _cache_file(audio, S, model)
+    if ctl:
+        ctl.check()
     if cf.exists():
         try:
-            return json.loads(cf.read_text(encoding="utf-8"))
+            cached = json.loads(cf.read_text(encoding="utf-8"))
+            if ctl:
+                ctl.check()
+            return cached
         except ValueError:
             pass
     if not available():
@@ -40,6 +45,8 @@ def transcribe(audio, S):
                                        beam_size=3, condition_on_previous_text=False)
         words, segments = [], []
         for s in segs:  # segments are kept as a fallback when word-level timestamps are missing
+            if ctl:
+                ctl.check()
             segments.append(dict(text=s.text.strip(), start=float(s.start), end=float(s.end)))
             words += [dict(word=w.word.strip(), start=float(w.start), end=float(w.end)) for w in (s.words or []) if w.word.strip()]
         return dict(words=words, segments=segments, language=info.language, duration=float(info.duration), model=model)
