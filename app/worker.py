@@ -200,7 +200,7 @@ class Manager:
                 ctl.cancel("stop")
         self._wait_for_idle(include_preview=True)
 
-    def _wait_for_idle(self, include_preview=False, timeout=60):
+    def _wait_for_idle(self, include_preview=False, timeout=180):
         deadline = time.time() + timeout
         while time.time() < deadline:
             with self.lock:
@@ -212,6 +212,7 @@ class Manager:
         raise StudioError("render_failure", "Cancellation was requested, but background work has not stopped yet. Wait a moment and try again.")
 
     def reset_all(self, delete_videos=False):
+        reset_complete = False
         with self.lock:
             self.resetting = True
             now = time.time()
@@ -251,11 +252,14 @@ class Manager:
                 for d in ("tmp", "thumbs", "cache", "previews", "transcripts", "logs"):
                     for f in (core.DATA / d).glob("*"):
                         shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
+                reset_complete = True
                 return removed
         finally:
             with self.lock:
                 self.resetting = False
                 self.paused = False
+                if not reset_complete:
+                    core.kv_set("paused", False)
 
     def cancel(self, path, reason="cancel"):
         with self.lock:
