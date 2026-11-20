@@ -519,6 +519,12 @@ class Manager:
                 (str(output), music["name"] if music else "", f"Rendered in {elapsed:.1f}s",
                  finished, elapsed, finished, path),
             )
+            saved = core.db("SELECT status FROM projects WHERE path=?", (path,))
+            if not saved or saved[0]["status"] != "completed":
+                raise RuntimeError(
+                    "Video rendering finished, but the project status was changed before completion "
+                    f"could be saved (current status: {saved[0]['status'] if saved else 'missing'})."
+                )
             core.log("info", name, "", f"Completed in {elapsed:.1f}s -> {output.name}")
         except Cancelled as exc:
             core.log("warn", name, "cancelled", f"Cancellation received: {exc.reason}")

@@ -626,7 +626,10 @@ function batchTiles() {
 async function settingsPage() {
   await reloadState();
   const presets = await api("/api/presets");
-  return head("Settings", "Presets, defaults and diagnostics. All settings are saved automatically and restored on next start.") + `<div class="grid">` +
+  return head("Settings", "Presets, full configuration backup, defaults and diagnostics. All settings are saved automatically and restored on next start.") + `<div class="grid">` +
+    card("Full settings backup (A-Z)", `<p class="note" style="margin-top:0">Export one JSON file containing every current setting across Projects and folder locations, Voice & Music, Video Settings, Effects & Transitions, Captions, Start Words, Batch Processing and application Settings. Import it on another installation to restore the configuration.</p>
+      <p class="note"><b>Important:</b> This includes folder paths. After importing on another computer, check that the folders exist there. This backs up configuration only, not project history, videos, logs, transcripts or media files.</p>
+      <div class="bar"><button class="pri" id="fullExport">Export all settings (JSON)</button><button id="fullImport">Import full settings (JSON)…</button><input type="file" id="fullfile" accept=".json,application/json" hidden></div>`) +
     card("Presets", `<p class="note" style="margin-top:0">A preset stores every video, audio, effect, transition, caption and start-words setting (not folder paths). Export a preset to a file to back it up or share it; import it on another computer.</p>
       <div class="bar"><input type="text" id="pname" class="grow" placeholder="Preset name"><button class="pri" id="pSave">Save / update</button></div>
       <div class="bar"><button id="pImport">Import from file…</button><input type="file" id="pfile" accept=".json,application/json" hidden>${presets.length ? '<a class="btn" id="pExportAll" href="/api/presets/export" download>Export all</a>' : '<button disabled>Export all</button>'}</div>
@@ -639,7 +642,16 @@ async function settingsPage() {
 document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const post = (u, d) => api(u, d);
-  if (b.id === "pSave" || b.dataset.pupd) { const name = b.dataset.pupd || $("#pname").value.trim(); if (!name) return toast("Enter a preset name", "err"); await act(b, async () => { await flushSave(); await post("/api/presets/save", { name }); toast("Preset saved", "ok"); render(); }); }
+  if (b.id === "fullExport") {
+    const backup = { format: "bulk-video-studio-full-settings", version: 1, exported_at: new Date().toISOString(), settings: st.settings };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = "BulkVideoStudio-full-settings-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    toast("Full settings backup exported", "ok");
+  }
+  else if (b.id === "fullImport") $("#fullfile").click();
+  else if (b.id === "pSave" || b.dataset.pupd) { const name = b.dataset.pupd || $("#pname").value.trim(); if (!name) return toast("Enter a preset name", "err"); await act(b, async () => { await flushSave(); await post("/api/presets/save", { name }); toast("Preset saved", "ok"); render(); }); }
   else if (b.dataset.pload) await act(b, async () => { const r = await post("/api/presets/load", { name: b.dataset.pload }); st.settings = r.settings; toast("Preset loaded", "ok"); render(); });
   else if (b.dataset.pdel) { if (confirm(`Delete preset "${b.dataset.pdel}"?`)) await act(b, async () => { await post("/api/presets/delete", { name: b.dataset.pdel }); render(); }); }
   else if (b.id === "pImport") $("#pfile").click();
@@ -652,10 +664,19 @@ document.addEventListener("click", async e => {
   }
 });
 document.addEventListener("change", async e => {
-  if (e.target.id !== "pfile" || !e.target.files[0]) return;
+  if (!["pfile", "fullfile"].includes(e.target.id) || !e.target.files[0]) return;
   try {
-    const data = JSON.parse(await e.target.files[0].text()), r = await api("/api/presets/import", { data });
-    toast(`Imported: ${r.saved.join(", ") || "nothing"}${r.skipped.length ? " · Skipped: " + r.skipped.join("; ") : ""}`, r.skipped.length ? "err" : "ok"); render();
+    const data = JSON.parse(await e.target.files[0].text());
+    if (e.target.id === "fullfile") {
+      if (!data || data.format !== "bulk-video-studio-full-settings" || data.version !== 1 || !data.settings || typeof data.settings !== "object" || Array.isArray(data.settings))
+        throw new Error("This is not a supported BulkVideoStudio full-settings backup.");
+      if (!confirm("IMPORT FULL SETTINGS?\n\nThis will replace every current setting, including project folder paths, voice and music, video, effects, transitions, captions, start words and batch settings.\n\nExport your current settings first if you may need them later. Continue?")) return;
+      const r = await api("/api/settings", { settings: data.settings });
+      st.settings = r.settings; toast("Full settings restored successfully", "ok"); await reloadState(); render();
+    } else {
+      const r = await api("/api/presets/import", { data });
+      toast(`Imported: ${r.saved.join(", ") || "nothing"}${r.skipped.length ? " · Skipped: " + r.skipped.join("; ") : ""}`, r.skipped.length ? "err" : "ok"); render();
+    }
   } catch (x) { toast("Import failed: " + x.message, "err"); }
   e.target.value = "";
 });
