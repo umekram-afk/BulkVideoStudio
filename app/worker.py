@@ -248,7 +248,6 @@ class Manager:
                 core.db("DELETE FROM logs")
                 core.db("DELETE FROM kv")
                 self.paused = False
-                core.kv_set("paused", False)
                 for d in ("tmp", "thumbs", "cache", "previews", "transcripts", "logs"):
                     for f in (core.DATA / d).glob("*"):
                         shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
@@ -297,10 +296,11 @@ class Manager:
         except Exception as e:
             self._fail(path, name, "unexpected", f"{type(e).__name__}: {e}", traceback.format_exc())
         finally:
-            with self.lock:
-                self.ctls.pop(path, None)
             shutil.rmtree(tmp_dir(path), ignore_errors=True)
             self._batch_end_if_idle()
+            # Keep the handle registered until every final DB/file operation is done.
+            with self.lock:
+                self.ctls.pop(path, None)
 
     def _batch_end_if_idle(self):
         if core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0 and core.kv_get("batch_end") is None:
@@ -354,7 +354,9 @@ def process(path, ctl):
     part = out.with_name(f"{out.name}.{token}.part")
     try:
         T = render.render(P, S, work, part, ctl, lf, on_progress=prog)
+        ctl.check()
         render.validate(part, T, S, want_audio=True)
+        ctl.check()
         os.replace(part, out)  # only now does the final name appear
     finally:
         if part.exists():
