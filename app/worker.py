@@ -443,7 +443,7 @@ def make_audio_preview(path, seconds=20.0):
                 inputs += ["-stream_loop", "-1", "-i", P["music"]["file"]]; im = nin; nin += 1
             g, _ = render.audio_graph(P, S, iv, im, seconds, 0)
             work.mkdir(parents=True, exist_ok=True)
-            (work / "g.txt").write_text(";\\n".join(g), encoding="utf-8")
+            (work / "g.txt").write_text(";\n".join(g), encoding="utf-8")
             lf.write_text("", encoding="utf-8")
             args = [render.tool("ffmpeg"), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
                     "-progress", "pipe:1", "-nostats", *inputs, render.caps()["filter_script"], "g.txt",
