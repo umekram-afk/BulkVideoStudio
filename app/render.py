@@ -5,6 +5,7 @@ from . import core, captions, dust as dustgen
 from .core import StudioError, Cancelled
 
 NOWIN = 0x08000000 if os.name == "nt" else 0
+_still_cache_lock = threading.RLock()
 RES = {"9:16": (1080, 1920), "16:9": (1920, 1080), "1:1": (1080, 1080)}
 XFADE = {"fade": "fade", "dissolve": "dissolve", "wipeleft": "wipeleft", "wiperight": "wiperight",
          "wipeup": "wipeup", "wipedown": "wipedown", "slideleft": "slideleft", "slideright": "slideright",
@@ -219,13 +220,34 @@ def _fit_filter(S, W, H):
 
 
 def prepare_still(img, out, S, W, H, logfile):
-    r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", img, "-vf", _fit_filter(S, W, H), "-frames:v", "1",
-                        "-c:v", "png", "-compression_level", "1", str(out)], capture_output=True, text=True,
-                       creationflags=NOWIN, encoding="utf-8", errors="replace")
-    if r.returncode or not Path(out).exists():
-        with open(logfile, "a", encoding="utf-8") as f:
-            f.write(f"\n[prepare {img}]\n{r.stderr}")
-        raise StudioError("corrupted_file", f"Cannot decode image: {Path(img).name}", r.stderr[-500:])
+    """Reuse fitted stills across renders; source mtime/size and fit settings invalidate the cache."""
+    source = Path(img)
+    try:
+        st = source.stat()
+        key_data = (str(source.resolve()), st.st_size, st.st_mtime_ns, W, H, S.video.fit, S.video.bg_color)
+        key = hashlib.sha1(repr(key_data).encode("utf-8", "replace")).hexdigest()
+        cache_dir = core.DATA / "cache" / "stills"
+        cached = cache_dir / f"{key}.png"
+        with _still_cache_lock:
+            if cached.is_file() and cached.stat().st_size > 1000:
+                shutil.copy2(cached, out)
+                return
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            temp = cache_dir / f"{key}.{os.getpid()}.{threading.get_ident()}.tmp.png"
+            r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", str(source), "-vf", _fit_filter(S, W, H), "-frames:v", "1",
+                                "-c:v", "png", "-compression_level", "1", str(temp)], capture_output=True, text=True,
+                               timeout=90, creationflags=NOWIN, encoding="utf-8", errors="replace")
+            if r.returncode or not temp.exists() or temp.stat().st_size < 1000:
+                temp.unlink(missing_ok=True)
+                with open(logfile, "a", encoding="utf-8") as f:
+                    f.write(f"\n[prepare {img}]\n{r.stderr}")
+                raise StudioError("corrupted_file", f"Cannot decode image: {source.name}", r.stderr[-500:])
+            os.replace(temp, cached)
+            shutil.copy2(cached, out)
+    except subprocess.TimeoutExpired:
+        raise StudioError("render_failure", f"Image preparation timed out: {source.name}")
+    except OSError as e:
+        raise StudioError("render_failure", f"Could not prepare image {source.name}: {e}")
 
 
 def vignette_mask(S, W, H):
