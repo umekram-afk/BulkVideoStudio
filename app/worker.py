@@ -82,6 +82,7 @@ class Manager:
     def __init__(self):
         self.lock = threading.RLock()
         self.ctls = {}
+        self.deferred = {}
         self.paused = bool(core.kv_get("paused", False))
         self.resetting = False
         self.stopping = False
@@ -155,6 +156,10 @@ class Manager:
                 if want is not None and r["path"] not in want:
                     continue
                 ok = {"ready"} if want is None else {"ready", "failed", "skipped"} | ({"completed"} if force else set())
+                if self.stopping and r["status"] == "processing":
+                    self.deferred[r["path"]] = bool(force)
+                    n += 1
+                    continue
                 if r["status"] not in ok:
                     continue
                 n += 1
@@ -315,6 +320,11 @@ class Manager:
                     self.ctls.pop(path, None)
                     if self.stopping and not self.ctls:
                         self.stopping = False
+                        now = time.time()
+                        for deferred_path, deferred_force in self.deferred.items():
+                            core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0, updated=? WHERE path=? AND status='ready'",
+                                    (now, int(deferred_force), now, deferred_path))
+                        self.deferred.clear()
                         if core.db("SELECT 1 FROM projects WHERE status='pending' LIMIT 1"):
                             core.kv_set("batch_end", None)
 
