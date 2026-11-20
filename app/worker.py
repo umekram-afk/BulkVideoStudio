@@ -371,62 +371,92 @@ def process(path, ctl):
 
 
 # ---------------------------------------------------------------- previews (synchronous, one at a time)
+def _begin_preview():
+    with manager.lock:
+        if manager.resetting:
+            raise StudioError("render_failure", "Reset is in progress; wait before starting a preview.")
+        ctl = Ctl()
+        _preview_ctl[0] = ctl
+        return ctl
+
+
+def _end_preview():
+    with manager.lock:
+        _preview_ctl[0] = None
+
+
 def make_preview(path, seconds=8.0):
     """Render the first seconds of a project with current settings. Returns path of the preview mp4."""
     with _preview_lock:
-        ov = overrides_of(path)
-        S = core.effective(core.load_settings(), ov)
-        P = plan.build_plan(path, S, ov)
-        seconds = min(seconds, P["duration"])
-        P["cut"], P["duration"] = True, seconds
-        P["segments"] = [dict(s, end=min(s["end"], seconds)) for s in P["segments"] if s["start"] < seconds - 0.3]
-        if not P["segments"]:
-            raise StudioError("invalid_settings", "Project is too short to preview")
+        ctl = _begin_preview()
         work = core.DATA / "tmp" / "preview"
-        shutil.rmtree(work, ignore_errors=True)
         out = core.DATA / "previews" / "preview.mp4"
         part = out.with_name("preview.part")
         lf = core.DATA / "logs" / "preview.ffmpeg.log"
-        lf.write_text("", encoding="utf-8")
-        ctl = _preview_ctl[0] = Ctl()
         try:
+            ctl.check()
+            ov = overrides_of(path)
+            S = core.effective(core.load_settings(), ov)
+            P = plan.build_plan(path, S, ov)
+            ctl.check()
+            seconds = min(seconds, P["duration"])
+            P["cut"], P["duration"] = True, seconds
+            P["segments"] = [dict(s, end=min(s["end"], seconds)) for s in P["segments"] if s["start"] < seconds - 0.3]
+            if not P["segments"]:
+                raise StudioError("invalid_settings", "Project is too short to preview")
+            shutil.rmtree(work, ignore_errors=True)
+            lf.write_text("", encoding="utf-8")
             render.render(P, S, work, part, ctl, lf)
+            ctl.check()
             os.replace(part, out)
+            return out, P["warnings"]
         except Cancelled:
             raise StudioError("render_failure", "Preview cancelled")
         finally:
-            _preview_ctl[0] = None
+            _end_preview()
             shutil.rmtree(work, ignore_errors=True)
             part.unlink(missing_ok=True)
-        return out, P["warnings"]
 
 
 def make_audio_preview(path, seconds=20.0):
-    """Mixed voice + music preview (same audio chain as the real render)."""
+    """Mixed voice + music preview (same audio chain as the real audio render)."""
     with _preview_lock:
-        ov = overrides_of(path)
-        S = core.effective(core.load_settings(), ov)
-        P = plan.build_plan(path, S, ov, transcribe=False)
-        if not P["voice"] and not P["music"]:
-            raise StudioError("missing_voice", "Nothing to preview: enable voice or music")
-        seconds = min(seconds, P["duration"])
-        inputs, nin = [], 0
-        iv = im = None
-        if P["voice"]:
-            inputs += ["-i", P["voice"]]; iv = nin; nin += 1
-        if P["music"]:
-            inputs += ["-stream_loop", "-1", "-i", P["music"]["file"]]; im = nin; nin += 1
-        g, _ = render.audio_graph(P, S, iv, im, seconds, 0)
-        out = core.DATA / "previews" / "mix.mp3"
+        ctl = _begin_preview()
         work = core.DATA / "tmp" / "audiopreview"
-        work.mkdir(parents=True, exist_ok=True)
-        (work / "g.txt").write_text(";\n".join(g), encoding="utf-8")
-        r = render._run([render.tool("ffmpeg"), "-y", "-v", "error", *inputs, render.caps()["filter_script"], str(work / "g.txt"),
-                         "-map", "[aout]", "-t", f"{seconds:.2f}", "-c:a", "libmp3lame", "-b:a", "160k", str(out)], timeout=300)
-        shutil.rmtree(work, ignore_errors=True)
-        if r.returncode:
-            raise StudioError("render_failure", "Audio preview failed", r.stderr[-600:])
-        return out, P["music"]
+        out = core.DATA / "previews" / "mix.mp3"
+        lf = core.DATA / "logs" / "audio-preview.ffmpeg.log"
+        try:
+            ctl.check()
+            ov = overrides_of(path)
+            S = core.effective(core.load_settings(), ov)
+            P = plan.build_plan(path, S, ov, transcribe=False)
+            ctl.check()
+            if not P["voice"] and not P["music"]:
+                raise StudioError("missing_voice", "Nothing to preview: enable voice or music")
+            seconds = min(seconds, P["duration"])
+            inputs, nin = [], 0
+            iv = im = None
+            if P["voice"]:
+                inputs += ["-i", P["voice"]]; iv = nin; nin += 1
+            if P["music"]:
+                inputs += ["-stream_loop", "-1", "-i", P["music"]["file"]]; im = nin; nin += 1
+            g, _ = render.audio_graph(P, S, iv, im, seconds, 0)
+            work.mkdir(parents=True, exist_ok=True)
+            (work / "g.txt").write_text(";\\n".join(g), encoding="utf-8")
+            lf.write_text("", encoding="utf-8")
+            args = [render.tool("ffmpeg"), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
+                    "-progress", "pipe:1", "-nostats", *inputs, render.caps()["filter_script"], "g.txt",
+                    "-map", "[aout]", "-t", f"{seconds:.2f}", "-c:a", "libmp3lame", "-b:a", "160k", str(out)]
+            rc = render.run_ffmpeg(args, str(work), lf, seconds, reg=ctl.reg)
+            ctl.check()
+            if rc:
+                raise StudioError("render_failure", "Audio preview failed", render._tail(lf, 600))
+            return out, P["music"]
+        except Cancelled:
+            raise StudioError("render_failure", "Audio preview cancelled")
+        finally:
+            _end_preview()
+            shutil.rmtree(work, ignore_errors=True)
 
 
 manager = Manager()
