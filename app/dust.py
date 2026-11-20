@@ -85,7 +85,8 @@ def make_dust_ass(d, W, H, total, rng):
     ev, fj = [], [1.0]  # fj: per-frame flicker factor of the whole layer
 
     def emit(t0, t1, opacity, path, b, colour=None):
-        tags = f"{{\\an7\\pos(0,0)\\p2\\bord0\\shad0{f'\\blur{b:.2f}' if b > 0 else ''}\\1c{colour or col}\\1a{_alpha(opacity * op * fj[0])}}}"
+        blur_tag = f"\\\\blur{b:.2f}" if b > 0 else ""
+        tags = f"{{\\\\an7\\\\pos(0,0)\\\\p2\\\\bord0\\\\shad0{blur_tag}\\\\1c{colour or col}\\\\1a{_alpha(opacity * op * fj[0])}}}"
         ev.append(f"Dialogue: 0,{t0},{t1},Dust,,0,0,0,,{tags}{path}")
 
     nframes = max(1, math.ceil(total * fps))
