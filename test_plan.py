@@ -1,4 +1,4 @@
-"""Unit tests for script/voice alignment and image timeline logic (no FFmpeg needed).  Run: python tests/test_plan.py"""
+"""Unit tests for script/voice alignment and image timeline logic (no FFmpeg needed).  Run: python test_plan.py"""
 import os, sys, tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("STUDIO_DATA", tempfile.mkdtemp())
