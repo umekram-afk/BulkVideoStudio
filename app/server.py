@@ -353,8 +353,11 @@ def timing(rows, now=None):
     batch_eta = (max(lanes) if known and lanes else (0.0 if not active else None)) if active else 0.0
     if active and not known and not pending and running and running[0] and out[running[0]["path"]]["eta"] is not None:
         batch_eta = max(v["eta"] for v in out.values() if v["eta"] is not None)
+    rendered = [r for r in rows if r["status"] in ("completed", "failed") and r.get("elapsed") is not None
+                and (bs is None or (r.get("finished_at") or 0) >= bs)]
     return dict(per=out, batch=dict(started=bs, elapsed=((be if be is not None else now) - bs) if bs is not None else None, active=active,
-                                    eta=batch_eta, render_sum=sum(r["elapsed"] for r in done), avg=avg, finished=len(done)))
+                                    eta=batch_eta, render_sum=sum(r["elapsed"] for r in rendered), avg=avg, finished=len(done),
+                                    rendered=len(rendered)))
 
 
 @route("GET", "/api/batch")
