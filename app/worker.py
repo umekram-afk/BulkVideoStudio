@@ -140,9 +140,38 @@ class Manager:
             try:
                 self._run(path, ctl)
             except Exception as e:
-                core.log("error", Path(path).name, "unexpected", f"Worker loop recovered from: {e}", traceback.format_exc())
-                with self.lock:
-                    self.ctls.pop(path, None)
+                detail = traceback.format_exc()
+                core.log("error", Path(path).name, "unexpected", f"Worker loop recovered from: {e}", detail)
+                # _run normally catches render errors itself. If its finalizer or
+                # a database/log operation raises, never leave a phantom
+                # 'processing' row that consumes a parallel slot forever.
+                try:
+                    now = time.time()
+                    reason = ctl.cancelled()
+                    if reason in ("stop", "shutdown", "skip"):
+                        status = "skipped" if reason == "skip" else ("pending" if reason == "shutdown" else "ready")
+                        core.db("UPDATE projects SET status=?, message=?, progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE path=? AND status='processing'",
+                                (status, "Skipped by user" if reason == "skip" else ("Cancelled" if reason == "stop" else ""), now, path))
+                    else:
+                        core.db("UPDATE projects SET status='failed', category='worker_failure', message=?, progress=0, finished_at=?, elapsed=CASE WHEN started_at IS NOT NULL THEN ?-started_at END, updated=? WHERE path=? AND status='processing'",
+                                (f"Worker stopped unexpectedly: {type(e).__name__}: {e}", now, now, now, path))
+                except Exception:
+                    pass
+                finally:
+                    with self.lock:
+                        self.ctls.pop(path, None)
+                        if self.stopping and not self.ctls:
+                            self.stopping = False
+                            if not self.resetting:
+                                for deferred_path, deferred_force in self.deferred.items():
+                                    queued = time.time()
+                                    core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0, updated=? WHERE path=? AND status='ready'",
+                                            (queued, int(deferred_force), queued, deferred_path))
+                            self.deferred.clear()
+                    try:
+                        self._batch_end_if_idle()
+                    except Exception:
+                        pass
 
     def enqueue(self, paths=None, force=False):
         with self.lock:
@@ -289,6 +318,7 @@ class Manager:
         t0 = time.time()
         try:
             ctl.check()
+            core.db("UPDATE projects SET message='Analyzing audio and preparing timeline', progress=0.01 WHERE path=? AND status='processing'", (path,))
             core.log("info", name, "", "Started rendering")
             out, music = process(path, ctl)
             ctl.check()
@@ -313,27 +343,36 @@ class Manager:
         except Exception as e:
             self._fail(path, name, "unexpected", f"{type(e).__name__}: {e}", traceback.format_exc())
         finally:
+            # Resource cleanup must never prevent the worker slot from being
+            # released. A failure here used to strand the project in Processing.
             try:
                 shutil.rmtree(tmp_dir(path), ignore_errors=True)
             except Exception as e:
-                core.log("warn", name, "", f"Temporary-file cleanup failed: {e}")
+                try: core.log("warn", name, "", f"Temporary-file cleanup failed: {e}")
+                except Exception: pass
+            with self.lock:
+                self.ctls.pop(path, None)
+                if self.stopping and not self.ctls:
+                    self.stopping = False
+                    now = time.time()
+                    if not self.resetting:
+                        for deferred_path, deferred_force in list(self.deferred.items()):
+                            try:
+                                core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0, updated=? WHERE path=? AND status='ready'",
+                                        (now, int(deferred_force), now, deferred_path))
+                            except Exception as e:
+                                try: core.log("error", Path(deferred_path).name, "worker_failure", f"Could not resume deferred job: {e}")
+                                except Exception: pass
+                    self.deferred.clear()
+                    try:
+                        if core.db("SELECT 1 FROM projects WHERE status='pending' LIMIT 1"):
+                            core.kv_set("batch_end", None)
+                    except Exception: pass
             try:
                 self._batch_end_if_idle()
             except Exception as e:
-                core.log("error", name, "unexpected", f"Could not finalize batch timing: {e}", traceback.format_exc())
-            finally:
-                with self.lock:
-                    self.ctls.pop(path, None)
-                    if self.stopping and not self.ctls:
-                        self.stopping = False
-                        now = time.time()
-                        if not self.resetting:
-                            for deferred_path, deferred_force in self.deferred.items():
-                                core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0, updated=? WHERE path=? AND status='ready'",
-                                        (now, int(deferred_force), now, deferred_path))
-                        self.deferred.clear()
-                        if core.db("SELECT 1 FROM projects WHERE status='pending' LIMIT 1"):
-                            core.kv_set("batch_end", None)
+                try: core.log("error", name, "worker_failure", f"Could not finalize batch timing: {e}", traceback.format_exc())
+                except Exception: pass
 
     def _batch_end_if_idle(self):
         if core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0 and core.kv_get("batch_end") is None:
