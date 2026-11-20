@@ -104,12 +104,8 @@ class QueueEngineTests(unittest.TestCase):
             self.assertEqual(manager.enqueue(None), 5)
             self.assertTrue(wait_until(lambda: bool(manager.ctls)))
             manager.stop()
-            self.assertTrue(wait_until(lambda: not manager.ctls))
-            self.assertEqual(
-                core.db(
-                    "SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')"
-                )[0]["n"], 0
-            )
+            # Start again immediately, while the old render threads are still
+            # unwinding. The queue must defer active paths without losing them.
             self.assertEqual(manager.enqueue(None), 5)
             self.assertTrue(wait_until(
                 lambda: core.db(
