@@ -44,8 +44,11 @@ def transcribe(audio, S):
             words += [dict(word=w.word.strip(), start=float(w.start), end=float(w.end)) for w in (s.words or []) if w.word.strip()]
         return dict(words=words, segments=segments, language=info.language, duration=float(info.duration), model=model)
 
-    with _mlock:
-        try:
+    # Waiting for another project's transcription must remain cancellable.
+    while not _mlock.acquire(timeout=0.1):
+        if ctl:
+            ctl.check()
+    try:
             if S.video.hwaccel == "cpu":
                 # CPU mode is intentionally CPU-only for both encoding and local transcription.
                 res = run("cpu", "int8")
@@ -54,6 +57,8 @@ def transcribe(audio, S):
                     res = run("auto", "auto")
                 except Exception:  # e.g. missing CUDA DLLs -> safe CPU fallback
                     res = run("cpu", "int8")
+        except core.Cancelled:
+            raise
         except Exception as e:
             raise core.StudioError("caption_failure", f"Transcription failed: {e}",
                                    "If the model is not downloaded yet, connect to the internet once (Video Settings -> Download).")
