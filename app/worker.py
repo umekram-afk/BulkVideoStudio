@@ -159,14 +159,39 @@ class Manager:
                                 name=f"render-{Path(path).name[:40]}", daemon=True
                             )
                             self.job_threads.add(thread)
-                            thread.start()
+                            try:
+                                thread.start()
+                            except BaseException as exc:
+                                # Undo the claim if Windows cannot create the thread;
+                                # otherwise this project would remain processing forever.
+                                self.job_threads.discard(thread)
+                                self.ctls.pop(path, None)
+                                now = time.time()
+                                try:
+                                    core.db(
+                                        "UPDATE projects SET status='pending', progress=0, "
+                                        "message='Worker could not start; waiting for retry', "
+                                        "started_at=NULL, finished_at=NULL, elapsed=NULL, "
+                                        "updated=? WHERE path=? AND status='processing'",
+                                        (now, path),
+                                    )
+                                    core.log(
+                                        "error", Path(path).name, "worker_failure",
+                                        f"Could not start worker thread: {type(exc).__name__}: {exc}",
+                                        traceback.format_exc(),
+                                    )
+                                except BaseException:
+                                    pass
+                                continue
                             launched += 1
-                except Exception as exc:
+                except BaseException as exc:
+                    # Catch even unusual Windows/threading exceptions so the
+                    # dispatcher loop does not silently terminate.
                     try:
                         core.log("error", "", "worker_failure",
                                  f"Queue dispatcher error: {type(exc).__name__}: {exc}",
                                  traceback.format_exc())
-                    except Exception:
+                    except BaseException:
                         pass
 
                 if not launched:
