@@ -532,7 +532,7 @@ def process(path, ctl):
     ov = json.loads(row["overrides"]) if row else {}
     S = core.effective(core.load_settings(), ov)
     name = Path(path).name
-    P = plan.build_plan(path, S, ov, record_music=True)
+    P = plan.build_plan(path, S, ov, record_music=True, ctl=ctl)
     ctl.check()
     for w in P["warnings"]:
         core.log("warn", name, "", w)
@@ -609,7 +609,7 @@ def make_preview(path, seconds=8.0):
             ctl.check()
             ov = overrides_of(path)
             S = core.effective(core.load_settings(), ov)
-            P = plan.build_plan(path, S, ov)
+            P = plan.build_plan(path, S, ov, ctl=ctl)
             ctl.check()
             seconds = min(seconds, P["duration"])
             P["cut"], P["duration"] = True, seconds
@@ -625,9 +625,9 @@ def make_preview(path, seconds=8.0):
         except Cancelled:
             raise StudioError("render_failure", "Preview cancelled")
         finally:
-            _end_preview()
             shutil.rmtree(work, ignore_errors=True)
             part.unlink(missing_ok=True)
+            _end_preview()
 
 
 def make_audio_preview(path, seconds=20.0):
@@ -642,7 +642,7 @@ def make_audio_preview(path, seconds=20.0):
             ctl.check()
             ov = overrides_of(path)
             S = core.effective(core.load_settings(), ov)
-            P = plan.build_plan(path, S, ov, transcribe=False)
+            P = plan.build_plan(path, S, ov, transcribe=False, ctl=ctl)
             ctl.check()
             if not P["voice"] and not P["music"]:
                 raise StudioError("missing_voice", "Nothing to preview: enable voice or music")
@@ -669,9 +669,9 @@ def make_audio_preview(path, seconds=20.0):
         except Cancelled:
             raise StudioError("render_failure", "Audio preview cancelled")
         finally:
-            _end_preview()
             shutil.rmtree(work, ignore_errors=True)
             part.unlink(missing_ok=True)
+            _end_preview()
 
 
 manager = Manager()
