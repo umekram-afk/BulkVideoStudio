@@ -219,7 +219,7 @@ def _fit_filter(S, W, H):
 
 
 def prepare_still(img, out, S, W, H, logfile):
-    r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-i", img, "-vf", _fit_filter(S, W, H), "-frames:v", "1",
+    r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", img, "-vf", _fit_filter(S, W, H), "-frames:v", "1",
                         "-c:v", "png", "-compression_level", "1", str(out)], capture_output=True, text=True,
                        creationflags=NOWIN, encoding="utf-8", errors="replace")
     if r.returncode or not Path(out).exists():
@@ -518,9 +518,15 @@ def render(P, S, work, out_part, ctl, logfile, rng=None, on_progress=None):
     hw = hw_plan(S)
     if S.video.hwaccel == "gpu" and hw == [None]:
         core.log("warn", P["proj"]["name"], "", "GPU encoding was requested but no working GPU encoder was found - using CPU")
+    # FFmpeg otherwise starts a large filter/encoder thread pool for every
+    # simultaneous project. Divide available CPU threads across active workers.
+    workers = max(1, int(S.batch.workers))
+    cpu_threads = max(1, (os.cpu_count() or 2) // workers)
     for attempt, enc in enumerate(hw):
-        args = [tool("ffmpeg"), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning", "-progress", "pipe:1", "-nostats",
-                *inputs, c["filter_script"], "graph.txt", "-map", "[vout]", "-map", "[aout]", *encoder_args(S, enc),
+        args = [tool("ffmpeg"), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
+                "-filter_complex_threads", str(cpu_threads), "-progress", "pipe:1", "-nostats",
+                *inputs, c["filter_script"], "graph.txt", "-map", "[vout]", "-map", "[aout]",
+                "-threads", str(cpu_threads), *encoder_args(S, enc),
                 "-pix_fmt", "yuv420p", "-r", str(S.video.fps), "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
                 "-movflags", "+faststart", "-t", f"{T:.3f}", "-f", "mp4", str(out_part)]
         rc = run_ffmpeg(args, str(work), logfile, T, on_progress, ctl.reg)
