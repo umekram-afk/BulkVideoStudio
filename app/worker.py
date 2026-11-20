@@ -315,6 +315,7 @@ class Manager:
                 "WHERE status='pending'", (now,)
             )
             self.stopping = bool(self.ctls)
+            self.deferred.clear()
             for ctl in list(self.ctls.values()):
                 ctl.cancel("stop")
             if not self.ctls:
