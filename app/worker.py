@@ -84,12 +84,14 @@ class Manager:
         self.ctls = {}
         self.paused = bool(core.kv_get("paused", False))
         self.resetting = False
+        self.stopping = False
         self.stop_evt = threading.Event()
         self.threads = []
 
     def start(self):
         with self.lock:
             self.stop_evt.clear()
+            self.stopping = False
             alive = {t.name for t in self.threads if t.is_alive()}
             for i in range(MAX_THREADS):
                 name = f"worker-{i}"
@@ -107,7 +109,7 @@ class Manager:
     # ---- queue operations
     def _claim(self):
         with self.lock:
-            if self.paused or self.resetting or self.stop_evt.is_set():
+            if self.paused or self.resetting or self.stopping or self.stop_evt.is_set():
                 return None, None
             S = core.load_settings()
             running = core.db("SELECT COUNT(*) n FROM projects WHERE status='processing'")[0]["n"]
@@ -135,7 +137,12 @@ class Manager:
             if not path:
                 self.stop_evt.wait(0.4)
                 continue
-            self._run(path, ctl)
+            try:
+                self._run(path, ctl)
+            except Exception as e:
+                core.log("error", Path(path).name, "unexpected", f"Worker loop recovered from: {e}", traceback.format_exc())
+                with self.lock:
+                    self.ctls.pop(path, None)
 
     def enqueue(self, paths=None, force=False):
         with self.lock:
@@ -175,30 +182,26 @@ class Manager:
                 core.kv_set("paused", False)
 
     def stop(self):
+        """Request cancellation without blocking the HTTP request on model/CPU cleanup."""
         with self.lock:
             now = time.time()
             self.paused = False
+            self.stopping = True
             core.kv_set("paused", False)
             core.kv_set("batch_end", now)
             core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
             for c in list(self.ctls.values()):
                 c.cancel("stop")
-        self._wait_for_idle(include_preview=False)
+        return True
 
     def stop_all(self):
-        """Cancel running renders/previews and wait until all controls are released."""
+        """Cancel renders and previews; return immediately while non-interruptible work unwinds."""
+        self.stop()
         with self.lock:
-            now = time.time()
-            self.paused = False
-            core.kv_set("paused", False)
-            core.kv_set("batch_end", now)
-            core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
-            for c in list(self.ctls.values()):
-                c.cancel("stop")
             ctl = _preview_ctl[0]
             if ctl:
                 ctl.cancel("stop")
-        self._wait_for_idle(include_preview=True)
+        return True
 
     def _wait_for_idle(self, include_preview=False, timeout=180):
         deadline = time.time() + timeout
@@ -300,11 +303,19 @@ class Manager:
         except Exception as e:
             self._fail(path, name, "unexpected", f"{type(e).__name__}: {e}", traceback.format_exc())
         finally:
-            shutil.rmtree(tmp_dir(path), ignore_errors=True)
-            self._batch_end_if_idle()
-            # Keep the handle registered until every final DB/file operation is done.
-            with self.lock:
-                self.ctls.pop(path, None)
+            try:
+                shutil.rmtree(tmp_dir(path), ignore_errors=True)
+            except Exception as e:
+                core.log("warn", name, "", f"Temporary-file cleanup failed: {e}")
+            try:
+                self._batch_end_if_idle()
+            except Exception as e:
+                core.log("error", name, "unexpected", f"Could not finalize batch timing: {e}", traceback.format_exc())
+            finally:
+                with self.lock:
+                    self.ctls.pop(path, None)
+                    if self.stopping and not self.ctls:
+                        self.stopping = False
 
     def _batch_end_if_idle(self):
         if core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0 and core.kv_get("batch_end") is None:
