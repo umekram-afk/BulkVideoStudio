@@ -222,6 +222,7 @@ class Manager:
         reset_complete = False
         with self.lock:
             self.resetting = True
+            self.deferred.clear()
             now = time.time()
             core.kv_set("batch_end", now)
             core.db("UPDATE projects SET status='ready', message='Resetting', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
@@ -265,6 +266,8 @@ class Manager:
             with self.lock:
                 self.resetting = False
                 self.paused = False
+                self.stopping = False
+                self.deferred.clear()
                 if not reset_complete:
                     core.kv_set("paused", False)
 
@@ -321,9 +324,10 @@ class Manager:
                     if self.stopping and not self.ctls:
                         self.stopping = False
                         now = time.time()
-                        for deferred_path, deferred_force in self.deferred.items():
-                            core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0, updated=? WHERE path=? AND status='ready'",
-                                    (now, int(deferred_force), now, deferred_path))
+                        if not self.resetting:
+                            for deferred_path, deferred_force in self.deferred.items():
+                                core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0, updated=? WHERE path=? AND status='ready'",
+                                        (now, int(deferred_force), now, deferred_path))
                         self.deferred.clear()
                         if core.db("SELECT 1 FROM projects WHERE status='pending' LIMIT 1"):
                             core.kv_set("batch_end", None)
