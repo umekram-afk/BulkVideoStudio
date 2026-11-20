@@ -126,6 +126,20 @@ check("running video: extrapolated from its own progress (~30 s left)", 20 < t["
 check("queued videos get an estimate and a finish time, in order", t["per"]["d"]["eta"] < t["per"]["e"]["eta"] < t["per"]["f"]["eta"] and t["per"]["d"]["est"] == 50)
 check("one worker: each queued video adds one average render", abs((t["per"]["e"]["eta"] - t["per"]["d"]["eta"]) - 50) < 1e-6)
 check("batch total elapsed counts from batch start", abs(t["batch"]["elapsed"] - 1000) < 1e-6 and t["batch"]["active"] and t["batch"]["eta"] > 100)
+# ---- voice-synchronised caption animation modes
+sample_words = [dict(word="One", start=0.0, end=0.2), dict(word="complete", start=0.3, end=0.55), dict(word="line.", start=0.6, end=0.9)]
+full_hl = captions.make_ass(sample_words, S(captions=dict(highlight=True, animation="progressive", max_words=6, max_lines=2)),
+                            1080, 1920, 2, progressive=True)
+first_dialogue = next(x for x in full_hl.splitlines() if x.startswith("Dialogue:"))
+check("spoken-word highlight keeps the full caption visible from its first word", "complete" in first_dialogue and "line." in first_dialogue)
+static_cap = captions.make_ass(sample_words, S(captions=dict(animation="static", highlight=False, max_words=6, max_lines=2)),
+                               1080, 1920, 2, progressive=True)
+check("static voice-synced animation emits one full caption event", len([x for x in static_cap.splitlines() if x.startswith("Dialogue:")]) == 1)
+progressive_cap = captions.make_ass(sample_words, S(captions=dict(animation="progressive", highlight=False, max_words=6, max_lines=2)),
+                                    1080, 1920, 2, progressive=True)
+progressive_first = next(x for x in progressive_cap.splitlines() if x.startswith("Dialogue:"))
+check("progressive animation still reveals words in sequence", "One" in progressive_first and "complete" not in progressive_first)
+
 core.update_settings({"batch": {"workers": 2}})
 t2 = server.timing(rows, now)
 check("two workers finish the queue sooner", t2["batch"]["eta"] < t["batch"]["eta"])
