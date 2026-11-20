@@ -117,6 +117,35 @@ class QueueEngineTests(unittest.TestCase):
             if manager.dispatcher:
                 manager.dispatcher.join(timeout=2)
 
+    def test_reset_deletes_generated_videos_even_without_database_output(self):
+        add_projects(2)
+        project_rows = core.db("SELECT path,name FROM projects ORDER BY name")
+        extra = Path(_DATA) / "extra-output"
+        extra.mkdir()
+        expected = []
+        for row in project_rows:
+            project_dir = Path(row["path"])
+            local_video = project_dir / f"{row['name']}_final.mp4"
+            local_video.write_bytes(b"test-video")
+            expected.append(local_video)
+            extra_video = extra / f"{row['name']}_final.mp4"
+            extra_video.write_bytes(b"test-video")
+            expected.append(extra_video)
+
+        core.load_settings = lambda: {
+            "batch": {"workers": 1},
+            "output": {"suffix": "_final"},
+            "paths": {"parent": _DATA, "prefix": "project-", "extra_output": str(extra)},
+        }
+        manager = worker.Manager()
+        try:
+            removed = manager.reset_all(delete_videos=True)
+            self.assertEqual(removed, 4)
+            self.assertTrue(all(not path.exists() for path in expected))
+            self.assertEqual(core.db("SELECT COUNT(*) n FROM projects")[0]["n"], 0)
+        finally:
+            manager.shutdown()
+
     def test_reset_waits_for_active_work_and_clears_projects(self):
         add_projects(3)
         manager = self.make_manager(2)
