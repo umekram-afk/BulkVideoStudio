@@ -44,7 +44,39 @@ def _check_disk(paths, seconds):
 
 
 class Ctl:
-    """Thread-safe per-job control; cancellation is remembered even before FFmpeg starts."""
+    """Thread-safe per-job control; cancellation is remembered before FFmpeg starts."""
+    def __init__(self):
+        self.proc, self.flag = None, None
+        self.lock = threading.Lock()
+
+    def reg(self, p):
+        with self.lock:
+            self.proc = p
+            cancelled = self.flag is not None
+        if cancelled and p.poll() is None:
+            p.terminate()
+
+    def cancelled(self):
+        with self.lock:
+            return self.flag
+
+    def check(self):
+        reason = self.cancelled()
+        if reason:
+            raise Cancelled(reason)
+
+    def cancel(self, reason):
+        with self.lock:
+            self.flag = reason
+            proc = self.proc
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+
+
+class Manager:
     def __init__(self):
         self.lock = threading.RLock()
         self.ctls = {}
@@ -72,8 +104,6 @@ class Ctl:
 
     # ---- queue operations
     def _claim(self):
-        # Claiming the DB row and registering its cancellation handle are one
-        # critical section. Stop/reset can therefore never miss a just-claimed job.
         with self.lock:
             if self.paused or self.resetting or self.stop_evt.is_set():
                 return None, None
@@ -106,15 +136,13 @@ class Ctl:
             self._run(path, ctl)
 
     def enqueue(self, paths=None, force=False):
-        """Queue eligible projects and start a fresh batch clock only when the queue was idle."""
         with self.lock:
             if self.resetting:
                 return 0
             now, n = time.time(), 0
             idle = core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0
             want = set(paths) if paths is not None else None
-            rows = sorted(core.db("SELECT path,status FROM projects"),
-                          key=lambda r: scan.nat_key(Path(r["path"]).name))
+            rows = sorted(core.db("SELECT path,status FROM projects"), key=lambda r: scan.nat_key(Path(r["path"]).name))
             for r in rows:
                 if want is not None and r["path"] not in want:
                     continue
@@ -140,35 +168,30 @@ class Ctl:
 
     def resume(self):
         with self.lock:
-            if self.resetting:
-                return
-            self.paused = False
-            core.kv_set("paused", False)
+            if not self.resetting:
+                self.paused = False
+                core.kv_set("paused", False)
 
     def stop(self):
         with self.lock:
             now = time.time()
             core.kv_set("batch_end", now)
-            core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'",
-                    (now,))
+            core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
             for c in list(self.ctls.values()):
                 c.cancel("stop")
 
     def stop_all(self):
-        """Cancel running renders/previews and return queued work to Ready."""
         self.stop()
         ctl = _preview_ctl[0]
         if ctl:
             ctl.cancel("stop")
 
     def reset_all(self, delete_videos=False):
-        """Stop all work before clearing processing state; never clear data while a worker is alive."""
         with self.lock:
             self.resetting = True
             now = time.time()
             core.kv_set("batch_end", now)
-            core.db("UPDATE projects SET status='ready', message='Resetting', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'",
-                    (now,))
+            core.db("UPDATE projects SET status='ready', message='Resetting', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
             for c in list(self.ctls.values()):
                 c.cancel("stop")
             preview = _preview_ctl[0]
@@ -178,26 +201,24 @@ class Ctl:
             deadline = time.time() + 120
             while time.time() < deadline:
                 with self.lock:
-                    jobs_active = bool(self.ctls)
-                preview_active = _preview_ctl[0] is not None
-                if not jobs_active and not preview_active:
+                    active = bool(self.ctls)
+                if not active and _preview_ctl[0] is None:
                     break
                 time.sleep(0.25)
             with self.lock:
                 if self.ctls or _preview_ctl[0] is not None:
-                    raise StudioError("render_failure", "Reset cancelled the work but a background process did not stop. No project data was deleted; try Stop and Reset again.")
-            removed = 0
-            if delete_videos:
-                S = core.load_settings()
-                for r in core.db("SELECT path,output FROM projects WHERE output IS NOT NULL AND output!=''"):
-                    out = Path(r["output"])
-                    cands = [out]
-                    if S["paths"]["extra_output"]:
-                        cands.append(Path(S["paths"]["extra_output"]) / out.name)
-                    for f in cands:
-                        if f.suffix.lower() == ".mp4" and f.is_file() and (f.parent == Path(r["path"]) or f.parent == Path(S["paths"]["extra_output"] or "?")):
-                            f.unlink(missing_ok=True); removed += 1
-            with self.lock:
+                    raise StudioError("render_failure", "Background work did not stop within 120 seconds. No project data was deleted; try Stop and Reset again.")
+                removed = 0
+                if delete_videos:
+                    S = core.load_settings()
+                    for r in core.db("SELECT path,output FROM projects WHERE output IS NOT NULL AND output!=''"):
+                        out = Path(r["output"])
+                        cands = [out]
+                        if S["paths"]["extra_output"]:
+                            cands.append(Path(S["paths"]["extra_output"]) / out.name)
+                        for f in cands:
+                            if f.suffix.lower() == ".mp4" and f.is_file() and (f.parent == Path(r["path"]) or f.parent == Path(S["paths"]["extra_output"] or "?")):
+                                f.unlink(missing_ok=True); removed += 1
                 core.db("DELETE FROM projects")
                 core.db("DELETE FROM logs")
                 core.db("DELETE FROM kv")
@@ -205,7 +226,7 @@ class Ctl:
                 for d in ("tmp", "thumbs", "cache", "previews", "transcripts", "logs"):
                     for f in (core.DATA / d).glob("*"):
                         shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
-            return removed
+                return removed
         finally:
             with self.lock:
                 self.resetting = False
