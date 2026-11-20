@@ -17,6 +17,7 @@ def S(**zoom):
 rng = random.Random(1)
 check("zoom disabled -> no filter", render.zoom_filter(core.S(core.load_settings()), rng, 4, 30) == "")
 check("probability 0 -> never zooms", all(render.zoom_filter(S(probability=0), rng, 4, 30) == "" for _ in range(50)))
+check("mandatory first image zoom overrides probability 0", bool(render.zoom_filter(S(probability=0), rng, 4, 30, force=True)))
 check("probability 100 -> always zooms", all(render.zoom_filter(S(probability=100), rng, 4, 30) for _ in range(50)))
 hits = sum(bool(render.zoom_filter(S(probability=50), rng, 4, 30)) for _ in range(1000))
 check("probability 50 -> about half of pictures", 430 < hits < 570, hits)
