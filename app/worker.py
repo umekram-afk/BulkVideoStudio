@@ -67,7 +67,9 @@ class Ctl:
 
     def cancel(self, reason):
         with self.lock:
-            self.flag = reason
+            # Preserve an explicit user stop/skip if application shutdown follows.
+            if self.flag is None:
+                self.flag = reason
             proc = self.proc
         if proc and proc.poll() is None:
             try:
@@ -175,16 +177,39 @@ class Manager:
     def stop(self):
         with self.lock:
             now = time.time()
+            self.paused = False
+            core.kv_set("paused", False)
             core.kv_set("batch_end", now)
             core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
             for c in list(self.ctls.values()):
                 c.cancel("stop")
+        self._wait_for_idle(include_preview=False)
 
     def stop_all(self):
-        self.stop()
-        ctl = _preview_ctl[0]
-        if ctl:
-            ctl.cancel("stop")
+        """Cancel running renders/previews and wait until all controls are released."""
+        with self.lock:
+            now = time.time()
+            self.paused = False
+            core.kv_set("paused", False)
+            core.kv_set("batch_end", now)
+            core.db("UPDATE projects SET status='ready', message='Queue stopped', progress=0, queued_at=NULL, started_at=NULL, finished_at=NULL, elapsed=NULL, updated=? WHERE status='pending'", (now,))
+            for c in list(self.ctls.values()):
+                c.cancel("stop")
+            ctl = _preview_ctl[0]
+            if ctl:
+                ctl.cancel("stop")
+        self._wait_for_idle(include_preview=True)
+
+    def _wait_for_idle(self, include_preview=False, timeout=60):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self.lock:
+                jobs_active = bool(self.ctls)
+            preview_active = include_preview and _preview_ctl[0] is not None
+            if not jobs_active and not preview_active:
+                return
+            time.sleep(0.1)
+        raise StudioError("render_failure", "Cancellation was requested, but background work has not stopped yet. Wait a moment and try again.")
 
     def reset_all(self, delete_videos=False):
         with self.lock:
@@ -223,6 +248,7 @@ class Manager:
                 core.db("DELETE FROM logs")
                 core.db("DELETE FROM kv")
                 self.paused = False
+                core.kv_set("paused", False)
                 for d in ("tmp", "thumbs", "cache", "previews", "transcripts", "logs"):
                     for f in (core.DATA / d).glob("*"):
                         shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink(missing_ok=True)
