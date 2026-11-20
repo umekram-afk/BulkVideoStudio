@@ -56,7 +56,7 @@ to 12 px dust blobs), *Softness* (sharp pixels to blurred blobs), *Flicker* (ran
 projector) and *Animation* (Slow / Normal / Fast, or **Static** = frozen dust on the lens, the cheapest to render).
 Recipes: fine film grain = size 1-2, soft 0, normal; drifting dust = size 8-12, low density, soft 60, slow.
 
-**Smooth zoom** - slow zoom on individual pictures (off by default; tick *Enable*). Controls:
+**Smooth zoom** - slow zoom on individual pictures (off by default; tick *Enable*). The first image is forced to zoom by default when this effect is enabled; disable *Always zoom the first image* to let it follow the probability. Controls:
 
 | Control | Meaning |
 |---|---|
@@ -188,7 +188,7 @@ tests/                  unit, end-to-end (HTTP) and browser tests
 The rendering worker runs inside the server process, independent of the browser. The web server uses only the Python
 standard library, so the single third-party dependency is `faster-whisper`.
 
-## 9. Running the tests (optional, needs FFmpeg)
+## 9. Running the tests (optional, needs FFmpeg)\nThe test scripts and `fixtures.py` are stored in the repository root (not in a `tests` subfolder).
 ```
 python tests\test_plan.py      # alignment / timeline logic
 python tests\test_effects.py   # zoom + black noise (unit + real renders)
