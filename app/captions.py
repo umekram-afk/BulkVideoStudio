@@ -49,19 +49,27 @@ def transcribe(audio, S):
         if ctl:
             ctl.check()
     try:
-            if S.video.hwaccel == "cpu":
-                # CPU mode is intentionally CPU-only for both encoding and local transcription.
+        if S.video.hwaccel == "cpu":
+            # CPU mode is intentionally CPU-only for both encoding and local transcription.
+            res = run("cpu", "int8")
+        else:
+            try:
+                res = run("auto", "auto")
+            except core.Cancelled:
+                raise
+            except Exception:  # e.g. missing CUDA DLLs -> safe CPU fallback
+                if ctl:
+                    ctl.check()
                 res = run("cpu", "int8")
-            else:
-                try:
-                    res = run("auto", "auto")
-                except Exception:  # e.g. missing CUDA DLLs -> safe CPU fallback
-                    res = run("cpu", "int8")
-        except core.Cancelled:
-            raise
-        except Exception as e:
-            raise core.StudioError("caption_failure", f"Transcription failed: {e}",
-                                   "If the model is not downloaded yet, connect to the internet once (Video Settings -> Download).")
+    except core.Cancelled:
+        raise
+    except Exception as e:
+        raise core.StudioError("caption_failure", f"Transcription failed: {e}",
+                               "If the model is not downloaded yet, connect to the internet once (Video Settings -> Download).")
+    finally:
+        _mlock.release()
+    if ctl:
+        ctl.check()
     cf.write_text(json.dumps(res), encoding="utf-8")
     return res
 
