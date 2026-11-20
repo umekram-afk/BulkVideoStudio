@@ -238,6 +238,16 @@ def main():
         check("Stop everything: nothing running or queued afterwards", s == 200 and c["processing"] == 0 and c["pending"] == 0, str(c))
         check("Stop everything is logged", any("STOP EVERYTHING" in l["message"] for l in call("/api/logs")[1]))
         check("stopped jobs are not marked failed", c["failed"] == 0, str(c))
+        # Stop must also clear a persisted pause and allow a clean immediate restart.
+        call("/api/batch", {"action": "pause"})
+        call("/api/batch", {"action": "rerender", "paths": [projs["set-001"]["path"]]})
+        s, stopped = call("/api/stop-all", {})
+        state_after_stop = call("/api/state")[1]
+        check("Stop everything clears pause and leaves no queued work", s == 200 and not state_after_stop["paused"] and stopped["counts"]["pending"] == 0)
+        call("/api/batch", {"action": "rerender", "paths": [projs["set-001"]["path"]]})
+        restarted = wait(lambda b: b["counts"]["pending"] == 0 and b["counts"]["processing"] == 0)
+        check("a fresh batch starts immediately after Stop everything",
+              {r["name"]: r for r in restarted["rows"]}["set-001"]["status"] == "completed")
         # ---- RESET EVERYTHING (keeps settings + presets; videos kept unless asked)
         before = call("/api/state")[1]["settings"]
         s, r = call("/api/reset-all", {"delete_videos": False})
