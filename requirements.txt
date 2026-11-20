@@ -1,2 +1,5 @@
-# Only one third-party package is needed. The web server, database and job queue use the Python standard library.
+# Local transcription dependencies.
+# PyAV 19 removed the metadata_errors argument used by Faster-Whisper 1.2.1.
+# Keep the tested compatible version so audio decoding works after a fresh setup.
 faster-whisper>=1.0.0
+av==18.1.0
