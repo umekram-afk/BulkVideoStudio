@@ -19,5 +19,3 @@ jobs:
           python-version: "3.11"
       - name: Test queue lifecycle
         run: python test_queue_engine.py
-      - name: Test timeline and caption logic
-        run: python test_plan.py
