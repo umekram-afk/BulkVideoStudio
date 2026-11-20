@@ -114,8 +114,7 @@ On: captions are generated from the actual voice (never from the script), shown 
 line and 2 lines by default, a new caption block starts when the picture changes; if Whisper gives no word timestamps, segment timestamps are
 used. Off: the previous caption behaviour, unchanged. Image and caption synchronisation are independent settings.
 
-**GPU / CPU** - *Video Settings* (and Batch Processing): Automatic (system decides), GPU, or CPU only, plus a choice of GPU encoder.
-A GPU failure always falls back to the CPU for that video.
+**GPU / CPU** - *Video Settings*: Automatic, GPU, or CPU selects the final H.264 encoder (NVENC/QSV/AMF or libx264). Image preparation, scaling, transitions, visual effects and subtitle rendering still run mainly on the CPU. CPU mode also forces local Whisper transcription to CPU; GPU/Automatic allows Whisper to use an available GPU. Hardware encoder failures fall back to CPU.
 
 **No voice-over / no music** - *Voice & Music*. "Use voice-over" off, or "Voice-over required" off (a project without a voice
 file is then made without voice; length = pictures x seconds per picture). Same for music.
