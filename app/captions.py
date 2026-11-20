@@ -58,18 +58,13 @@ def transcribe(audio, S, ctl=None):
     try:
         if ctl:
             ctl.check()
-        if S.video.hwaccel == "cpu":
-            # CPU mode is intentionally CPU-only for both encoding and local transcription.
-            res = run("cpu", "int8")
-        else:
-            try:
-                res = run("auto", "auto")
-            except core.Cancelled:
-                raise
-            except Exception:  # e.g. missing CUDA DLLs -> safe CPU fallback
-                if ctl:
-                    ctl.check()
-                res = run("cpu", "int8")
+        # Use CPU INT8 for local transcription. Automatic CTranslate2 device
+        # selection can stall inside native initialization/inference on some
+        # Windows GPU configurations without raising an exception, which
+        # prevents the existing CPU fallback from running. CPU INT8 has been
+        # verified with the user's audio and keeps transcription cancellable
+        # at the existing checkpoints.
+        res = run("cpu", "int8")
     except core.Cancelled:
         raise
     except Exception as e:
