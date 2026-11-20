@@ -277,7 +277,7 @@ class Manager:
                 )
 
             if queued:
-                if idle:
+                if idle or self.stopping:
                     core.kv_set("batch_start", now)
                 core.kv_set("batch_end", None)
                 self.changed.notify_all()
