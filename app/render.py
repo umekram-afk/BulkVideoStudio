@@ -232,17 +232,23 @@ def prepare_still(img, out, S, W, H, logfile):
             if cached.is_file() and cached.stat().st_size > 1000:
                 shutil.copy2(cached, out)
                 return
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            temp = cache_dir / f"{key}.{os.getpid()}.{threading.get_ident()}.tmp.png"
-            r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", str(source), "-vf", _fit_filter(S, W, H), "-frames:v", "1",
-                                "-c:v", "png", "-compression_level", "1", str(temp)], capture_output=True, text=True,
-                               timeout=90, creationflags=NOWIN, encoding="utf-8", errors="replace")
-            if r.returncode or not temp.exists() or temp.stat().st_size < 1000:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        # Do not hold the cache lock while FFmpeg runs: different projects must
+        # prepare images concurrently when batch parallelism is enabled.
+        temp = cache_dir / f"{key}.{os.getpid()}.{threading.get_ident()}.tmp.png"
+        r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", str(source), "-vf", _fit_filter(S, W, H), "-frames:v", "1",
+                            "-c:v", "png", "-compression_level", "1", str(temp)], capture_output=True, text=True,
+                           timeout=90, creationflags=NOWIN, encoding="utf-8", errors="replace")
+        if r.returncode or not temp.exists() or temp.stat().st_size < 1000:
+            temp.unlink(missing_ok=True)
+            with open(logfile, "a", encoding="utf-8") as f:
+                f.write(f"\n[prepare {img}]\n{r.stderr}")
+            raise StudioError("corrupted_file", f"Cannot decode image: {source.name}", r.stderr[-500:])
+        with _still_cache_lock:
+            if cached.is_file() and cached.stat().st_size > 1000:
                 temp.unlink(missing_ok=True)
-                with open(logfile, "a", encoding="utf-8") as f:
-                    f.write(f"\n[prepare {img}]\n{r.stderr}")
-                raise StudioError("corrupted_file", f"Cannot decode image: {source.name}", r.stderr[-500:])
-            os.replace(temp, cached)
+            else:
+                os.replace(temp, cached)
             shutil.copy2(cached, out)
     except subprocess.TimeoutExpired:
         raise StudioError("render_failure", f"Image preparation timed out: {source.name}")
