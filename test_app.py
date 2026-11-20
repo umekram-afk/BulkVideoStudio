@@ -1,4 +1,4 @@
-"""End-to-end test: starts the real server and drives it over HTTP.  Run: python tests/test_app.py"""
+"""End-to-end test: starts the real server and drives it over HTTP.  Run: python test_app.py"""
 import json, os, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.request
 from pathlib import Path
 
