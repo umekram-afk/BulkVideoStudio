@@ -1,4 +1,4 @@
-"""Tests for the zoom and black-noise effects (needs FFmpeg).  Run: python tests/test_effects.py"""
+"""Tests for the zoom and black-noise effects (needs FFmpeg).  Run: python test_effects.py"""
 import os, random, re, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, ".."))
