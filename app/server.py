@@ -364,8 +364,12 @@ def timing(rows, now=None):
 def batch_status(q, b):
     rows = core.db("SELECT path,name,status,progress,message,category,output,music,started_at,finished_at,elapsed,video_seconds,queued_at FROM projects")
     rows.sort(key=lambda r: scan.nat_key(r["name"]))
-    now = time.time()
+    now = core.kv_get("batch_end") if worker.manager.stopping else time.time()
+    now = now or time.time()
     t = timing(rows, now)
+    if worker.manager.stopping:
+        t["batch"]["active"] = False
+        t["batch"]["eta"] = 0
     for r in rows:
         x = t["per"].get(r["path"], {})
         if x.get("elapsed") is not None:
@@ -427,15 +431,19 @@ class Handler(BaseHTTPRequestHandler):
             body = json.dumps(body).encode()
         elif isinstance(body, str):
             body = body.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        for k, v in (extra or {}).items():
-            self.send_header(k, v)
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Browser closed/reloaded while a long request was finishing.
+            return
 
     def _file(self, p, download=False):
         size = p.stat().st_size
