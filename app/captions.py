@@ -56,6 +56,8 @@ def transcribe(audio, S, ctl=None):
         if ctl:
             ctl.check()
     try:
+        if ctl:
+            ctl.check()
         if S.video.hwaccel == "cpu":
             # CPU mode is intentionally CPU-only for both encoding and local transcription.
             res = run("cpu", "int8")
