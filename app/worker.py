@@ -424,6 +424,7 @@ def make_audio_preview(path, seconds=20.0):
         ctl = _begin_preview()
         work = core.DATA / "tmp" / "audiopreview"
         out = core.DATA / "previews" / "mix.mp3"
+        part = core.DATA / "previews" / "mix.part.mp3"
         lf = core.DATA / "logs" / "audio-preview.ffmpeg.log"
         try:
             ctl.check()
@@ -446,17 +447,19 @@ def make_audio_preview(path, seconds=20.0):
             lf.write_text("", encoding="utf-8")
             args = [render.tool("ffmpeg"), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
                     "-progress", "pipe:1", "-nostats", *inputs, render.caps()["filter_script"], "g.txt",
-                    "-map", "[aout]", "-t", f"{seconds:.2f}", "-c:a", "libmp3lame", "-b:a", "160k", str(out)]
+                    "-map", "[aout]", "-t", f"{seconds:.2f}", "-c:a", "libmp3lame", "-b:a", "160k", str(part)]
             rc = render.run_ffmpeg(args, str(work), lf, seconds, reg=ctl.reg)
             ctl.check()
             if rc:
                 raise StudioError("render_failure", "Audio preview failed", render._tail(lf, 600))
+            os.replace(part, out)
             return out, P["music"]
         except Cancelled:
             raise StudioError("render_failure", "Audio preview cancelled")
         finally:
             _end_preview()
             shutil.rmtree(work, ignore_errors=True)
+            part.unlink(missing_ok=True)
 
 
 manager = Manager()
