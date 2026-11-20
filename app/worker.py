@@ -152,6 +152,8 @@ class Manager:
                                 continue
                             ctl = Ctl()
                             self.ctls[path] = ctl
+                            core.log("info", Path(path).name, "queue",
+                                     f"Claimed from queue; active jobs {len(self.ctls)}/{limit}")
                             thread = threading.Thread(
                                 target=self._execute, args=(path, ctl),
                                 name=f"render-{Path(path).name[:40]}", daemon=True
@@ -171,7 +173,9 @@ class Manager:
                     self.changed.wait(timeout=0.25)
 
     def _execute(self, path, ctl):
+        name = Path(path).name
         try:
+            core.log("info", name, "worker", "Worker thread entered")
             self._run_job(path, ctl)
         except BaseException as exc:
             # A failure in bookkeeping must never strand the queue slot.
@@ -209,6 +213,11 @@ class Manager:
             with self.changed:
                 self.ctls.pop(path, None)
                 self.job_threads.discard(threading.current_thread())
+                try:
+                    core.log("info", name, "worker",
+                             f"Worker released queue slot; {len(self.ctls)} job(s) remain active")
+                except Exception:
+                    pass
 
                 # A user may queue the same project while its previous attempt
                 # is still unwinding. Start that new attempt only after cleanup.
@@ -472,7 +481,8 @@ class Manager:
                 "UPDATE projects SET message='Analyzing audio and preparing timeline', progress=0.01 "
                 "WHERE path=? AND status='processing'", (path,)
             )
-            core.log("info", name, "", "Started rendering")
+            core.log("info", name, "job", "Job started")
+            core.log("info", name, "prepare", "Preparing project and building timeline")
             output, music = process(path, ctl)
             ctl.check()
             finished = time.time()
@@ -486,6 +496,7 @@ class Manager:
             )
             core.log("info", name, "", f"Completed in {elapsed:.1f}s -> {output.name}")
         except Cancelled as exc:
+            core.log("warn", name, "cancelled", f"Cancellation received: {exc.reason}")
             if exc.reason == "skip":
                 status, message = "skipped", "Skipped by user"
             elif exc.reason == "exists":
@@ -532,8 +543,10 @@ def process(path, ctl):
     ov = json.loads(row["overrides"]) if row else {}
     S = core.effective(core.load_settings(), ov)
     name = Path(path).name
+    core.log("info", name, "prepare", "Building timeline and analyzing voice/audio")
     P = plan.build_plan(path, S, ov, record_music=True, ctl=ctl)
     ctl.check()
+    core.log("info", name, "prepare", f"Timeline ready: {len(P['segments'])} segments, {P['duration']:.1f}s")
     for w in P["warnings"]:
         core.log("warn", name, "", w)
     out = out_path(P["proj"], S)
@@ -555,6 +568,7 @@ def process(path, ctl):
         stale.unlink(missing_ok=True)
     lf = log_file(name)
     lf.write_text("", encoding="utf-8")
+    core.log("info", name, "render", "Starting FFmpeg render")
     core.db("UPDATE projects SET music=?, music_start=?, message='Rendering' WHERE path=?",
             (P["music"]["name"] if P["music"] else "", P["music"]["start"] if P["music"] else 0, path))
     last = [0.0]
@@ -565,9 +579,12 @@ def process(path, ctl):
             core.db("UPDATE projects SET progress=? WHERE path=?", (f, path))
     part = out.with_name(f"{out.name}.{token}.part")
     try:
+        core.log("info", name, "render", "FFmpeg process launched")
         T = render.render(P, S, work, part, ctl, lf, on_progress=prog)
         ctl.check()
+        core.log("info", name, "validate", "FFmpeg finished; validating output file")
         render.validate(part, T, S, want_audio=True)
+        core.log("info", name, "validate", "Output validation passed")
         ctl.check()
         os.replace(part, out)  # only now does the final name appear
     finally:
