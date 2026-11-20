@@ -46,10 +46,14 @@ def transcribe(audio, S):
 
     with _mlock:
         try:
-            try:
-                res = run("auto", "auto")
-            except Exception:  # e.g. missing CUDA DLLs -> safe CPU fallback
+            if S.video.hwaccel == "cpu":
+                # CPU mode is intentionally CPU-only for both encoding and local transcription.
                 res = run("cpu", "int8")
+            else:
+                try:
+                    res = run("auto", "auto")
+                except Exception:  # e.g. missing CUDA DLLs -> safe CPU fallback
+                    res = run("cpu", "int8")
         except Exception as e:
             raise core.StudioError("caption_failure", f"Transcription failed: {e}",
                                    "If the model is not downloaded yet, connect to the internet once (Video Settings -> Download).")
