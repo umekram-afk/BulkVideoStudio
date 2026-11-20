@@ -358,7 +358,7 @@ def hw_plan(S):
 def encoder_args(S, hw):
     crf = S.video.crf
     if hw == "h264_nvenc":
-        return ["-c:v", hw, "-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"]
+        return ["-c:v", hw, "-preset", "p3", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"]
     if hw == "h264_qsv":
         return ["-c:v", hw, "-global_quality", str(crf), "-preset", "medium"]
     if hw == "h264_amf":
