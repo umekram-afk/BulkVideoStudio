@@ -1,5 +1,5 @@
 """Local web server (stdlib only). Binds to 127.0.0.1. REST API + static UI."""
-import hashlib, json, mimetypes, os, re, subprocess, sys, threading, time, webbrowser
+import hashlib, json, mimetypes, os, re, shutil, subprocess, sys, threading, time, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -414,7 +414,11 @@ def clear_cache(q, b):
     n = 0
     for d in ("thumbs", "cache", "transcripts", "previews"):
         for f in (core.DATA / d).glob("*"):
-            f.unlink(missing_ok=True); n += 1
+            if f.is_dir():
+                shutil.rmtree(f, ignore_errors=True)
+            else:
+                f.unlink(missing_ok=True)
+            n += 1
     return dict(removed=n)
 
 
@@ -422,6 +426,15 @@ def clear_cache(q, b):
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "BulkStudio"
+
+    def handle(self):
+        # A browser tab can close while keep-alive is waiting for the next
+        # request. On Windows that can raise WinError 10053 before _dispatch
+        # runs, so contain the expected client disconnect at the handler edge.
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def log_message(self, *a):
         pass
