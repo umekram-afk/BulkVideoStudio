@@ -1,5 +1,5 @@
 """Voice-based image sync + voice-synchronised captions.  Whisper is replaced by a simulated transcript (deterministic)
-so the matching, planning, captions and the real rendered frame-change times are all verified.  Run: python tests/test_voicesync.py"""
+so the matching, planning, captions and the real rendered frame-change times are all verified.  Run: python test_voicesync.py"""
 import os, re, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, ".."))
