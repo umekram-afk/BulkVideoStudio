@@ -634,6 +634,19 @@ def serve(port=8765, open_browser=True):
         pass
     finally:
         worker.manager.shutdown()
-        time.sleep(1)
+        # Keep the instance lock until all render workers have actually exited.
+        # If a worker cannot stop, retaining the lock is safer than allowing a
+        # second process to recover rows that may still belong to this process.
+        workers_stopped = True
+        try:
+            worker.manager._wait_for_idle(timeout=180)
+        except Exception as exc:
+            workers_stopped = False
+            try:
+                core.log("error", "", "worker_failure",
+                         f"Workers did not stop before server shutdown; retaining instance lock: {exc}")
+            except Exception:
+                pass
         srv.server_close()
-        _release_instance_lock()
+        if workers_stopped:
+            _release_instance_lock()
