@@ -677,7 +677,7 @@ document.addEventListener("click", e => { const t = e.target.closest(".tip"); if
 document.addEventListener("click", async e => {
   const b = e.target.closest("#stopAll, #stopAll2, #stopAll3"); if (!b) return;
   if (!confirm("Stop everything?\n\nRunning renders are cancelled, the queue is emptied and a running preview is cancelled.\nFinished videos are kept.")) return;
-  await act(b, async () => { const r = await api("/api/stop-all", {}); st.counts = r.counts; toast("Everything stopped", "ok"); await poll(true); });
+  await act(b, async () => { const r = await api("/api/stop-all", {}); st.counts = r.counts; toast("Stop requested. Active render cleanup may take a moment.", "ok"); await poll(true); });
 });
 function setNet(online) {
   const el = $("#netstat"); if (!el) return;
