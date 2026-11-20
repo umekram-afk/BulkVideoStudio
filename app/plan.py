@@ -159,7 +159,9 @@ def pick_music(S, ov, record=False, rng=None):
     return dict(file=track, name=Path(track).name, start=round(start, 2), duration=dur, warning=warn)
 
 
-def build_plan(path, S, ov=None, transcribe=True, music=True, record_music=False, rng=None):
+def build_plan(path, S, ov=None, transcribe=True, music=True, record_music=False, rng=None, ctl=None):
+    if ctl:
+        ctl.check()
     ov = ov or {}
     pr = scan.scan_project(path, S, ov)
     block = [i for i in pr["issues"] if i["blocking"]]
@@ -179,9 +181,13 @@ def build_plan(path, S, ov=None, transcribe=True, music=True, record_music=False
     tr = None
     need = voice and transcribe and (not sentences or S.captions.enabled or S.sync.mode != "even" or S.sync.method == "voice")
     if need:
+        if ctl:
+            ctl.check()
         if captions.available():
             try:
-                tr = captions.transcribe(voice, S)
+                tr = captions.transcribe(voice, S, ctl=ctl)
+                if ctl:
+                    ctl.check()
             except StudioError as e:
                 if not sentences:
                     raise
@@ -227,6 +233,8 @@ def build_plan(path, S, ov=None, transcribe=True, music=True, record_music=False
         sw = [(w, si) for si, s in enumerate(sentences) for w in s.split()]
         cap_words = [dict(word=w, start=a, end=b) for (w, _), (a, b) in zip(sw, estimate(sw, 0.0, Tv))]
         warnings.append("No voice-over: caption timing is spread evenly over the video")
+    if ctl:
+        ctl.check()
     for i in range(len(sent_list)):  # make sentence starts monotonic
         if i and sent_list[i]["start"] < sent_list[i - 1]["start"]:
             sent_list[i]["start"] = sent_list[i - 1]["start"]
@@ -262,6 +270,8 @@ def build_plan(path, S, ov=None, transcribe=True, music=True, record_music=False
             warnings.append("Manual image timing ignored: it no longer matches the number of images")
     segs = [dict(image=images[i], start=s, end=(starts[i + 1] if i + 1 < len(starts) else Tv)) for i, s in enumerate(starts)]
 
+    if ctl:
+        ctl.check()
     pick = None
     if music:
         pick = pick_music(S, ov, record=record_music, rng=rng)

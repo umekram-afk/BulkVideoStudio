@@ -219,7 +219,7 @@ def _fit_filter(S, W, H):
             f"[b]scale={W}:{H}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,format=rgb24")
 
 
-def prepare_still(img, out, S, W, H, logfile):
+def prepare_still(img, out, S, W, H, logfile, ctl=None):
     """Reuse fitted stills across renders; source mtime/size and fit settings invalidate the cache."""
     source = Path(img)
     try:
@@ -236,14 +236,29 @@ def prepare_still(img, out, S, W, H, logfile):
         # Do not hold the cache lock while FFmpeg runs: different projects must
         # prepare images concurrently when batch parallelism is enabled.
         temp = cache_dir / f"{key}.{os.getpid()}.{threading.get_ident()}.tmp.png"
-        r = subprocess.run([tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", str(source), "-vf", _fit_filter(S, W, H), "-frames:v", "1",
-                            "-c:v", "png", "-compression_level", "1", str(temp)], capture_output=True, text=True,
-                           timeout=90, creationflags=NOWIN, encoding="utf-8", errors="replace")
-        if r.returncode or not temp.exists() or temp.stat().st_size < 1000:
+        if ctl:
+            ctl.check()
+        args = [tool("ffmpeg"), "-y", "-v", "error", "-threads", "1", "-i", str(source), "-vf", _fit_filter(S, W, H), "-frames:v", "1",
+                "-c:v", "png", "-compression_level", "1", str(temp)]
+        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             creationflags=NOWIN, encoding="utf-8", errors="replace")
+        if ctl:
+            ctl.reg(p)
+        deadline = time.monotonic() + 90
+        while p.poll() is None:
+            if ctl:
+                ctl.check()
+            if time.monotonic() >= deadline:
+                p.kill()
+                p.communicate()
+                raise StudioError("render_failure", f"Image preparation timed out: {source.name}")
+            time.sleep(0.05)
+        _, stderr = p.communicate()
+        if p.returncode or not temp.exists() or temp.stat().st_size < 1000:
             temp.unlink(missing_ok=True)
             with open(logfile, "a", encoding="utf-8") as f:
-                f.write(f"\n[prepare {img}]\n{r.stderr}")
-            raise StudioError("corrupted_file", f"Cannot decode image: {source.name}", r.stderr[-500:])
+                f.write(f"\n[prepare {img}]\n{stderr}")
+            raise StudioError("corrupted_file", f"Cannot decode image: {source.name}", stderr[-500:])
         with _still_cache_lock:
             if cached.is_file() and cached.stat().st_size > 1000:
                 temp.unlink(missing_ok=True)
@@ -426,7 +441,7 @@ def audio_graph(P, S, idx_voice, idx_music, T, E, preview=False):
     return f, "aout"
 
 
-def build(P, S, work, rng, logfile):
+def build(P, S, work, rng, logfile, ctl=None):
     """Prepare stills and build the FFmpeg input list + filter graph. Returns (inputs, graph_lines, T, has_audio)."""
     W, H = RES[S.video.aspect]
     fps = S.video.fps
@@ -439,8 +454,10 @@ def build(P, S, work, rng, logfile):
 
     # video clips: stills, then optional black end clip
     for i, s in enumerate(segs):
+        if ctl:
+            ctl.check()
         still = work / f"img_{i}.png"
-        prepare_still(s["image"], still, S, W, H, logfile)
+        prepare_still(s["image"], still, S, W, H, logfile, ctl=ctl)
     clips = n + (1 if E else 0)
     L = [segs[i + 1]["start"] - segs[i]["start"] if i + 1 < n else Tv - segs[i]["start"] for i in range(n)]
     if E:
@@ -547,7 +564,11 @@ def render(P, S, work, out_part, ctl, logfile, rng=None, on_progress=None):
         raise StudioError("ffmpeg_missing", "FFmpeg/ffprobe not found")
     rng = rng or random.Random()
     work.mkdir(parents=True, exist_ok=True)
-    inputs, graph, T = build(P, S, work, rng, logfile)
+    if ctl:
+        ctl.check()
+    inputs, graph, T = build(P, S, work, rng, logfile, ctl=ctl)
+    if ctl:
+        ctl.check()
     (work / "graph.txt").write_text(";\n".join(graph), encoding="utf-8")
     hw = hw_plan(S)
     if S.video.hwaccel != "cpu" and not c["hw"] and S.video.hwaccel == "auto":
