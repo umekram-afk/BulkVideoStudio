@@ -355,7 +355,13 @@ def hw_plan(S):
     """Ordered list of encoders to try; None = CPU. Auto: GPU if one works, else CPU. GPU: forced GPU (CPU only if it
     fails). CPU: never use the GPU."""
     c = caps()
-    if S.video.hwaccel == "cpu" or not c["hw"]:
+    if S.video.hwaccel == "cpu":
+        return [None]
+    if not c["hw"]:
+        if S.video.hwaccel == "gpu":
+            raise StudioError("gpu_unavailable",
+                              "GPU encoding was selected, but FFmpeg could not find a working hardware encoder. "
+                              "Choose Auto or CPU, and check the FFmpeg build and graphics driver.")
         return [None]
     pick = S.video.hw_encoder if S.video.hw_encoder in c["hw"] else c["hw"][0]
     return [pick, None]
@@ -544,12 +550,8 @@ def render(P, S, work, out_part, ctl, logfile, rng=None, on_progress=None):
     inputs, graph, T = build(P, S, work, rng, logfile)
     (work / "graph.txt").write_text(";\n".join(graph), encoding="utf-8")
     hw = hw_plan(S)
-    if hw and hw[0]:
-        core.log("info", P["proj"]["name"], "", f"Video encoding: {hw[0]} (GPU); image scaling, transitions and filters remain CPU-based")
-    else:
-        core.log("info", P["proj"]["name"], "", "Video encoding: libx264 (CPU)")
-    if S.video.hwaccel == "gpu" and hw == [None]:
-        core.log("warn", P["proj"]["name"], "", "GPU encoding was requested but no working GPU encoder was found - using CPU")
+    if S.video.hwaccel != "cpu" and not c["hw"] and S.video.hwaccel == "auto":
+        core.log("warn", P["proj"]["name"], "", "No working hardware encoder detected; Auto mode is using libx264 on the CPU.")
     # FFmpeg otherwise starts a large filter/encoder thread pool for every
     # simultaneous project. Divide available CPU threads across active workers.
     workers = max(1, int(S.batch.workers))
@@ -565,6 +567,10 @@ def render(P, S, work, out_part, ctl, logfile, rng=None, on_progress=None):
         if ctl.cancelled():
             raise Cancelled(ctl.cancelled())
         if rc == 0:
+            if enc:
+                core.log("info", P["proj"]["name"], "", f"Video encoding completed with {enc} (GPU). Image scaling, transitions, captions and most filters still use the CPU.")
+            else:
+                core.log("info", P["proj"]["name"], "", "Video encoding completed with libx264 (CPU).")
             return T
         if enc:
             core.log("warn", P["proj"]["name"], "render_failure", f"Hardware encoder {enc} failed - retrying on CPU")
