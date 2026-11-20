@@ -193,7 +193,18 @@ def make_ass(words, S, W, H, total, progressive=False, image_starts=()):
             for wi, w in enumerate(blk):
                 e = blk[wi + 1]["start"] if wi + 1 < len(blk) else block_end
                 e = max(e, w["start"] + 0.04)
-                body = _lines(texts[:wi + 1], c["max_words"], hl, prim, wi if c["highlight"] else None)
+                animation = c.get("animation", "progressive")
+                if c["highlight"] or animation == "word_highlight":
+                    # Keep the complete caption visible; only the active spoken word changes colour.
+                    body = _lines(texts, c["max_words"], hl, prim, wi if c["highlight"] else None)
+                elif animation == "static":
+                    # A single stable caption block for the duration of the phrase.
+                    if wi:
+                        continue
+                    body = _lines(texts, c["max_words"], hl, prim)
+                    e = block_end
+                else:
+                    body = _lines(texts[:wi + 1], c["max_words"], hl, prim)
                 events.append(f"Dialogue: 0,{_ts(w['start'] + shift)},{_ts(e + shift)},Default,,0,0,0,,{pos}{body}")
         return _head(W, H, style) + "\n".join(events) + "\n"
     blocks = chunk_words(words, c["max_words"], c["max_lines"])
