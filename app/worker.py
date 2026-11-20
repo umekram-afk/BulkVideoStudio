@@ -145,7 +145,7 @@ class Manager:
 
     def enqueue(self, paths=None, force=False):
         with self.lock:
-            if self.resetting or self.stopping:
+            if self.resetting:
                 return 0
             now, n = time.time(), 0
             idle = core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0
@@ -160,9 +160,9 @@ class Manager:
                 n += 1
                 core.db("UPDATE projects SET status='pending', queued_at=?, started_at=NULL, finished_at=NULL, elapsed=NULL, force=?, message='', category='', progress=0 WHERE path=?",
                         (now + n * 1e-4, int(force), r["path"]))
-            if n and idle:
+            if n and (idle or self.stopping):
                 core.kv_set("batch_start", now)
-                core.kv_set("batch_end", None)
+                core.kv_set("batch_end", now if self.stopping else None)
             return n
 
     def retry_failed(self):
@@ -315,6 +315,8 @@ class Manager:
                     self.ctls.pop(path, None)
                     if self.stopping and not self.ctls:
                         self.stopping = False
+                        if core.db("SELECT 1 FROM projects WHERE status='pending' LIMIT 1"):
+                            core.kv_set("batch_end", None)
 
     def _batch_end_if_idle(self):
         if core.db("SELECT COUNT(*) n FROM projects WHERE status IN ('pending','processing')")[0]["n"] == 0 and core.kv_get("batch_end") is None:
