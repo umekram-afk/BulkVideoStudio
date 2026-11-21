@@ -1,0 +1,2 @@
+faster-whisper @ git+https://github.com/SYSTRAN/faster-whisper.git@2ce7f9d
+av==19.0.2
